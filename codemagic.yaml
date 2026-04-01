@@ -29,8 +29,10 @@ workflows:
       - name: Add iOS platform (if not present)
         script: |
           npm install @capacitor/ios
-          npx cap add ios
+          npx cap add ios || true
           npx cap sync ios
+          ls -la ios/ || echo "ios folder not found"
+          ls -la ios/App/ || echo "ios/App folder not found"
 
       - name: Install CocoaPods
         script: |
