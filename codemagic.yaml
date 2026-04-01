@@ -33,8 +33,9 @@ workflows:
 
       - name: Build iOS app
         script: |
+          BUILD_NUMBER=$(date +%s)
           cd ios/App
-          agvtool new-version -all 4
+          agvtool new-version -all $BUILD_NUMBER
           cd ../..
           xcode-project build-ipa \
             --workspace ios/App/App.xcodeproj/project.xcworkspace \
