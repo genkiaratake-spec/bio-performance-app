@@ -33,7 +33,10 @@ workflows:
           npx cap sync ios
           ls -la ios/ || echo "ios folder not found"
           ls -la ios/App/ || echo "ios/App folder not found"
-          cd ios/App && pod install --repo-update
+          find . -name "Podfile" || echo "No Podfile found anywhere"
+          ls -la ios/
+          ls -la ios/App/
+          pod install --project-directory=ios/App
 
       - name: Set up code signing
         script: xcode-project use-profiles
