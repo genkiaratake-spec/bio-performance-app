@@ -1,245 +1,194 @@
-import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { ArrowRight, FlaskConical, Dna, UtensilsCrossed, Pill, Activity, Shield, ScanLine, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
+import { Bell, ChevronRight, Flame, Moon, Zap, Activity, Apple, Dna } from "lucide-react";
 
-const HERO_BG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663494339540/PZWieBELV22uisfpiZwnXE/hero-bg-mU4kbkuAZM5BS9tSLcfcRc.webp";
-const BLOOD_IMG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663494339540/PZWieBELV22uisfpiZwnXE/blood-test-abstract-ehCZsVa2iJc2iLoZYXfPt8.webp";
-const MEAL_IMG = "https://d2xsxph8kpxj0f.cloudfront.net/310519663494339540/PZWieBELV22uisfpiZwnXE/meal-hero-2ohFe5Z9yFxLm54bXgbnWk.webp";
+const CIRCUMFERENCE = 2 * Math.PI * 48;
 
-const features = [
-  {
-    icon: Dna,
-    title: "DNA・血液データ解析",
-    description: "遺伝子検査と血液検査の結果をAIが統合解析。あなたの体質と現在の状態を可視化します。",
-    accent: "teal",
-  },
-  {
-    icon: ScanLine,
-    title: "AIフードスキャナー",
-    description: "食事の写真を撮るだけでAIがカロリー・栄養素を自動解析。血液・DNAデータと照合し、不足栄養素や注意成分をフラグします。",
-    accent: "amber",
-  },
-  {
-    icon: UtensilsCrossed,
-    title: "パーソナライズ・ミールプラン",
-    description: "あなたのバイオデータに基づき、最適なメニューをAIが自動提案。毎週更新されるあなた専用の食事プランを提供します。",
-    accent: "teal",
-  },
-  {
-    icon: Pill,
-    title: "サプリメント最適化",
-    description: "不足している栄養素を特定し、あなたに必要なサプリメントを科学的根拠に基づき提案。",
-    accent: "amber",
-  },
-  {
-    icon: Activity,
-    title: "パフォーマンス・トラッキング",
-    description: "食事と仕事の集中力・睡眠の質の相関を記録。継続的な改善を見える化します。",
-    accent: "teal",
-  },
+function ScoreRing({
+  value,
+  label,
+  color,
+  size = 120,
+}: {
+  value: number;
+  label: string;
+  color: string;
+  size?: number;
+}) {
+  const r = 48;
+  const offset = CIRCUMFERENCE * (1 - value / 100);
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div className="relative" style={{ width: size, height: size }}>
+        <svg width={size} height={size} viewBox="0 0 112 112">
+          {/* Track */}
+          <circle cx="56" cy="56" r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="8" />
+          {/* Progress */}
+          <circle
+            cx="56"
+            cy="56"
+            r={r}
+            fill="none"
+            stroke={color}
+            strokeWidth="8"
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            transform="rotate(-90 56 56)"
+            style={{ filter: `drop-shadow(0 0 6px ${color}88)` }}
+          />
+        </svg>
+        {/* Center value */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <span className="text-2xl font-bold text-white leading-none">{value}</span>
+          <span className="text-[9px] text-white/40 mt-0.5 uppercase tracking-widest">%</span>
+        </div>
+      </div>
+      <span className="text-[11px] font-semibold text-white/60 uppercase tracking-widest">{label}</span>
+    </div>
+  );
+}
+
+const metrics = [
+  { label: "HRV", value: "62ms", trend: "+4", positive: true },
+  { label: "Resting HR", value: "54bpm", trend: "-2", positive: true },
+  { label: "Calories", value: "2,140", trend: "87%", positive: true },
+  { label: "Protein", value: "142g", trend: "94%", positive: true },
 ];
 
-const stagger = { hidden: {}, visible: { transition: { staggerChildren: 0.08 } } };
-const fadeUp = { hidden: { opacity: 0, y: 16 }, visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" as const } } };
+const activities = [
+  { icon: Moon, label: "Sleep", value: "7h 24m", sub: "2 disturbances", color: "#4A9EFF" },
+  { icon: Zap, label: "Recovery", value: "82%", sub: "Optimal", color: "#00FF87" },
+  { icon: Flame, label: "Strain", value: "14.2", sub: "Moderate", color: "#FF6B35" },
+];
+
+const quickLinks = [
+  { href: "/food-scanner", icon: Apple, label: "Food Scanner", desc: "Scan your meal" },
+  { href: "/analysis", icon: Dna, label: "Analysis", desc: "View biomarkers" },
+];
 
 export default function Home() {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
+
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
-      {/* ───────────────────────────── Hero ───────────────────────────── */}
-      <section className="relative min-h-screen flex items-center">
-        <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${HERO_BG})` }} />
-        <div className="absolute inset-0 bg-gradient-to-r from-background via-background/85 to-background/40" />
-        <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
+    <div className="min-h-screen bg-[#050505] text-white pb-20">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 pt-14 pb-4">
+        <div>
+          <p className="text-xs text-white/40 uppercase tracking-widest mb-0.5">{dateStr}</p>
+          <h1 className="text-lg font-bold text-white">おはようございます 👋</h1>
+        </div>
+        <button className="w-9 h-9 rounded-full bg-white/8 flex items-center justify-center relative">
+          <Bell className="w-4 h-4 text-white/70" />
+          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#00FF87]" />
+        </button>
+      </div>
 
-        <div className="relative z-10 container mx-auto px-6 lg:px-12 py-32">
-          <div className="max-w-2xl">
-            <motion.div initial="hidden" animate="visible" variants={stagger}>
-              <motion.div variants={fadeUp} className="flex items-center gap-3 mb-8">
-                <div className="w-9 h-9 rounded-lg bg-primary/15 flex items-center justify-center glow-teal">
-                  <FlaskConical className="w-4.5 h-4.5 text-primary" />
-                </div>
-                <span className="text-xs tracking-[0.35em] uppercase text-muted-foreground font-semibold" style={{ fontFamily: "var(--font-display)" }}>
-                  Bio-Performance Lab
-                </span>
-              </motion.div>
-
-              <motion.h1 variants={fadeUp} className="text-4xl sm:text-5xl lg:text-[3.5rem] font-bold leading-[1.15] mb-6" style={{ fontFamily: "var(--font-display)" }}>
-                あなたの
-                <span className="text-gradient-teal"> バイオデータ </span>
-                が導く、
-                <br />
-                <span className="text-gradient-amber">最適な食事</span>
-              </motion.h1>
-
-              <motion.p variants={fadeUp} className="text-base lg:text-lg text-muted-foreground leading-relaxed mb-10 max-w-lg">
-                血液検査・DNA検査の結果をAIが解析し、仕事のパフォーマンスを最大化する食事・サプリメントを完全パーソナライズ。
-              </motion.p>
-
-              <motion.div variants={fadeUp} className="flex flex-wrap gap-4">
-                <Link href="/dashboard">
-                  <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold px-8 h-12">
-                    はじめる
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </Link>
-                <Link href="/upload">
-                  <Button size="lg" variant="outline" className="border-border text-foreground hover:bg-secondary gap-2 text-sm font-semibold px-8 h-12">
-                    データをアップロード
-                  </Button>
-                </Link>
-              </motion.div>
-            </motion.div>
-          </div>
+      {/* 3 Score Rings */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="mx-4 mt-2 rounded-2xl bg-[#0f0f0f] border border-white/6 px-4 py-6"
+      >
+        <div className="flex items-center justify-around">
+          <ScoreRing value={75} label="Sleep" color="#4A9EFF" />
+          <ScoreRing value={82} label="Recovery" color="#00FF87" size={136} />
+          <ScoreRing value={65} label="Strain" color="#FF6B35" />
         </div>
 
-        {/* Scroll indicator */}
-        <motion.div
-          className="absolute bottom-10 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.2 }}
-        >
-          <span className="text-[10px] tracking-[0.2em] uppercase text-muted-foreground/60">Scroll</span>
-          <motion.div
-            className="w-px h-8 bg-gradient-to-b from-primary/40 to-transparent"
-            animate={{ scaleY: [1, 0.5, 1] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-          />
-        </motion.div>
-      </section>
-
-      {/* ───────────────────────── Features ───────────────────────── */}
-      <section className="py-28 relative">
-        <div className="container mx-auto px-6 lg:px-12">
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-80px" }} variants={stagger} className="text-center mb-16">
-            <motion.p variants={fadeUp} className="stat-label mb-3">Core Features</motion.p>
-            <motion.h2 variants={fadeUp} className="text-3xl lg:text-4xl font-bold mb-4" style={{ fontFamily: "var(--font-display)" }}>
-              科学が、あなたの食事を変える
-            </motion.h2>
-            <motion.p variants={fadeUp} className="text-muted-foreground max-w-xl mx-auto text-sm">
-              トップアスリートが実践するデータ駆動型の栄養管理を、あなたの日常に。
-            </motion.p>
-          </motion.div>
-
-          <motion.div initial="hidden" whileInView="visible" viewport={{ once: true, margin: "-60px" }} variants={stagger} className="grid md:grid-cols-2 gap-4">
-            {features.map((feature) => (
-              <motion.div
-                key={feature.title}
-                variants={fadeUp}
-                className="elevated-card rounded-xl p-6 group hover:border-primary/20 transition-all duration-300"
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${feature.accent === "teal" ? "bg-teal/10 text-teal" : "bg-amber/10 text-amber"}`}>
-                    <feature.icon className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="text-base font-bold mb-1.5">{feature.title}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{feature.description}</p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/30 mt-1 shrink-0 group-hover:text-primary/50 transition-colors" />
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ───────────────────────── How it works ───────────────────────── */}
-      <section className="py-28 relative">
-        <div className="container mx-auto px-6 lg:px-12">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            <motion.div initial="hidden" whileInView="visible" viewport={{ once: true }} variants={stagger}>
-              <motion.p variants={fadeUp} className="stat-label mb-3">How It Works</motion.p>
-              <motion.h2 variants={fadeUp} className="text-3xl lg:text-4xl font-bold mb-8" style={{ fontFamily: "var(--font-display)" }}>
-                3ステップで
-                <br />
-                <span className="text-gradient-teal">最適化</span>が始まる
-              </motion.h2>
-
-              <div className="space-y-8">
-                {[
-                  { step: "01", title: "データをアップロード", desc: "血液検査・DNA検査の結果（PDF/画像）をアップロード。主要な検査機関のフォーマットに対応。" },
-                  { step: "02", title: "AIが解析・提案", desc: "あなたの体質と現在の栄養状態をAIが統合解析。相性の良い食材と避けるべき食材を特定。" },
-                  { step: "03", title: "最適なプランを実行", desc: "あなた専用のメニューを毎週自動提案。不足栄養素を補うサプリメントも最適化します。" },
-                ].map((item) => (
-                  <motion.div key={item.step} variants={fadeUp} className="flex gap-5">
-                    <div className="text-2xl font-bold text-primary/20" style={{ fontFamily: "var(--font-mono)" }}>
-                      {item.step}
-                    </div>
-                    <div>
-                      <h3 className="text-base font-bold mb-1">{item.title}</h3>
-                      <p className="text-sm text-muted-foreground leading-relaxed">{item.desc}</p>
-                    </div>
-                  </motion.div>
-                ))}
+        {/* Activity strip */}
+        <div className="flex gap-2 mt-5">
+          {activities.map(({ icon: Icon, label, value, sub, color }) => (
+            <div key={label} className="flex-1 rounded-xl bg-white/4 px-3 py-2.5">
+              <div className="flex items-center gap-1.5 mb-1">
+                <Icon className="w-3 h-3" style={{ color }} />
+                <span className="text-[10px] text-white/50 uppercase tracking-wider">{label}</span>
               </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="relative"
-            >
-              <div className="rounded-2xl overflow-hidden glow-teal">
-                <img src={BLOOD_IMG} alt="DNA and blood analysis visualization" className="w-full h-80 object-cover" />
-              </div>
-              <div className="absolute -bottom-6 -left-6 w-48 h-48 rounded-xl overflow-hidden border-2 border-background glow-amber">
-                <img src={MEAL_IMG} alt="Optimized meal" className="w-full h-full object-cover" />
-              </div>
-            </motion.div>
-          </div>
-        </div>
-      </section>
-
-      {/* ───────────────────────── CTA + Disclaimer ───────────────────────── */}
-      <section className="py-28 relative">
-        <div className="container mx-auto px-6 lg:px-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="elevated-card rounded-2xl p-8 lg:p-14 text-center"
-          >
-            <div className="flex justify-center mb-6">
-              <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                <Shield className="w-6 h-6 text-primary" />
-              </div>
+              <p className="text-sm font-bold text-white leading-none">{value}</p>
+              <p className="text-[10px] text-white/40 mt-0.5">{sub}</p>
             </div>
-            <h2 className="text-2xl lg:text-3xl font-bold mb-4" style={{ fontFamily: "var(--font-display)" }}>
-              あなたのパフォーマンスを、科学で最適化する
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto mb-8 text-sm leading-relaxed">
-              本サービスは医師・管理栄養士の監修に基づくアルゴリズムを使用しています。
-              医療行為（診断・処方）ではなく、健康増進・パフォーマンス最適化を目的としたアドバイスを提供します。
-              体調に不安がある場合は、必ず医療機関にご相談ください。
-            </p>
-            <Link href="/dashboard">
-              <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold px-10 h-12">
-                無料で始める
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </Link>
-          </motion.div>
+          ))}
         </div>
-      </section>
+      </motion.div>
 
-      {/* ───────────────────────── Footer ───────────────────────── */}
-      <footer className="border-t border-border/50 py-8">
-        <div className="container mx-auto px-6 lg:px-12 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <FlaskConical className="w-4 h-4 text-primary" />
-            <span className="text-sm text-muted-foreground font-medium" style={{ fontFamily: "var(--font-display)" }}>
-              Bio-Performance Lab
-            </span>
+      {/* Metrics Grid */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+        className="mx-4 mt-3 grid grid-cols-4 gap-2"
+      >
+        {metrics.map(({ label, value, trend, positive }) => (
+          <div key={label} className="rounded-xl bg-[#0f0f0f] border border-white/6 px-2.5 py-3">
+            <p className="text-[9px] text-white/40 uppercase tracking-wider mb-1">{label}</p>
+            <p className="text-xs font-bold text-white leading-none">{value}</p>
+            <p className={`text-[10px] mt-1 font-medium ${positive ? "text-[#00FF87]" : "text-red-400"}`}>{trend}</p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            &copy; 2026 Bio-Performance Lab. All rights reserved.
+        ))}
+      </motion.div>
+
+      {/* Quick Actions */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="mx-4 mt-3 grid grid-cols-2 gap-2"
+      >
+        {quickLinks.map(({ href, icon: Icon, label, desc }) => (
+          <Link key={href} href={href}>
+            <div className="rounded-xl bg-[#0f0f0f] border border-white/6 p-4 flex items-center gap-3 active:bg-white/5 transition-colors">
+              <div className="w-9 h-9 rounded-lg bg-[#00FF87]/10 flex items-center justify-center shrink-0">
+                <Icon className="w-4.5 h-4.5 text-[#00FF87]" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-white">{label}</p>
+                <p className="text-[10px] text-white/40 mt-0.5">{desc}</p>
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-white/20 ml-auto shrink-0" />
+            </div>
+          </Link>
+        ))}
+      </motion.div>
+
+      {/* Today's Insight */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.3 }}
+        className="mx-4 mt-3"
+      >
+        <div className="rounded-xl border border-[#00FF87]/20 bg-[#00FF87]/5 px-4 py-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Activity className="w-3.5 h-3.5 text-[#00FF87]" />
+            <span className="text-[10px] font-semibold text-[#00FF87] uppercase tracking-widest">Today's Insight</span>
+          </div>
+          <p className="text-xs text-white/70 leading-relaxed">
+            回復スコアが高い今日は高強度トレーニングに最適です。タンパク質摂取を
+            <span className="text-white font-semibold"> 150g</span> 目標にすることで筋合成を最大化できます。
           </p>
         </div>
-      </footer>
+      </motion.div>
+
+      {/* Upload CTA */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.4 }}
+        className="mx-4 mt-3"
+      >
+        <Link href="/upload">
+          <div className="rounded-xl bg-[#00FF87] px-4 py-4 flex items-center gap-3 active:opacity-90 transition-opacity">
+            <div className="flex-1">
+              <p className="text-xs font-bold text-black">血液・DNAデータをアップロード</p>
+              <p className="text-[10px] text-black/60 mt-0.5">最新の検査結果でインサイトを更新</p>
+            </div>
+            <ChevronRight className="w-4 h-4 text-black/60 shrink-0" />
+          </div>
+        </Link>
+      </motion.div>
     </div>
   );
 }
