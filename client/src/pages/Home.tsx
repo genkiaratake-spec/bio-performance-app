@@ -1,194 +1,317 @@
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { Bell, ChevronRight, Flame, Moon, Zap, Activity, Apple, Dna } from "lucide-react";
+import { Camera, Plus, Clock } from "lucide-react";
 
-const CIRCUMFERENCE = 2 * Math.PI * 48;
+// ── helpers ──────────────────────────────────────────────────────────────────
+const now = new Date();
+const dateStr = now.toLocaleDateString("ja-JP", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  weekday: "long",
+});
 
-function ScoreRing({
-  value,
-  label,
-  color,
-  size = 120,
-}: {
-  value: number;
-  label: string;
-  color: string;
-  size?: number;
+function ProgressBar({ value, max, color = "#4ade80", bg = "#1a1a22", height = 6 }: {
+  value: number; max: number; color?: string; bg?: string; height?: number;
 }) {
-  const r = 48;
-  const offset = CIRCUMFERENCE * (1 - value / 100);
-
+  const pct = Math.min(100, Math.round((value / max) * 100));
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="relative" style={{ width: size, height: size }}>
-        <svg width={size} height={size} viewBox="0 0 112 112">
-          {/* Track */}
-          <circle cx="56" cy="56" r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="8" />
-          {/* Progress */}
-          <circle
-            cx="56"
-            cy="56"
-            r={r}
-            fill="none"
-            stroke={color}
-            strokeWidth="8"
-            strokeDasharray={CIRCUMFERENCE}
-            strokeDashoffset={offset}
-            strokeLinecap="round"
-            transform="rotate(-90 56 56)"
-            style={{ filter: `drop-shadow(0 0 6px ${color}88)` }}
-          />
-        </svg>
-        {/* Center value */}
-        <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-2xl font-bold text-white leading-none">{value}</span>
-          <span className="text-[9px] text-white/40 mt-0.5 uppercase tracking-widest">%</span>
-        </div>
-      </div>
-      <span className="text-[11px] font-semibold text-white/60 uppercase tracking-widest">{label}</span>
+    <div style={{ background: bg, borderRadius: 999, height, overflow: "hidden" }}>
+      <motion.div
+        initial={{ width: 0 }}
+        animate={{ width: `${pct}%` }}
+        transition={{ duration: 0.8, ease: "easeOut" }}
+        style={{ background: color, height: "100%", borderRadius: 999 }}
+      />
     </div>
   );
 }
 
-const metrics = [
-  { label: "HRV", value: "62ms", trend: "+4", positive: true },
-  { label: "Resting HR", value: "54bpm", trend: "-2", positive: true },
-  { label: "Calories", value: "2,140", trend: "87%", positive: true },
-  { label: "Protein", value: "142g", trend: "94%", positive: true },
+// ── data ─────────────────────────────────────────────────────────────────────
+const calories = { current: 1480, goal: 2100 };
+const pfc = {
+  protein:  { g: 98,  goal: 150, color: "#4ade80" },
+  fat:      { g: 52,  goal: 70,  color: "#fbbf24" },
+  carbs:    { g: 184, goal: 260, color: "#60a5fa" },
+};
+const totalPfcG = pfc.protein.g + pfc.fat.g + pfc.carbs.g;
+
+const meals = [
+  {
+    id: "breakfast",
+    label: "朝食",
+    time: "07:30",
+    calories: 520,
+    score: 82,
+    recorded: true,
+    emoji: "🍳",
+    desc: "オートミール・ゆで卵・バナナ",
+  },
+  {
+    id: "lunch",
+    label: "昼食",
+    time: "12:15",
+    calories: 680,
+    score: 74,
+    recorded: true,
+    emoji: "🍱",
+    desc: "鶏むね肉定食・味噌汁・玄米",
+  },
+  {
+    id: "dinner",
+    label: "夕食",
+    time: null,
+    calories: null,
+    score: null,
+    recorded: false,
+    emoji: null,
+    desc: null,
+  },
 ];
 
-const activities = [
-  { icon: Moon, label: "Sleep", value: "7h 24m", sub: "2 disturbances", color: "#4A9EFF" },
-  { icon: Zap, label: "Recovery", value: "82%", sub: "Optimal", color: "#00FF87" },
-  { icon: Flame, label: "Strain", value: "14.2", sub: "Moderate", color: "#FF6B35" },
-];
+const dietScore = 78; // 夕食未記録なので暫定
+const scoreRecorded = meals.every((m) => m.recorded);
 
-const quickLinks = [
-  { href: "/food-scanner", icon: Apple, label: "Food Scanner", desc: "Scan your meal" },
-  { href: "/analysis", icon: Dna, label: "Analysis", desc: "View biomarkers" },
-];
-
-export default function Home() {
-  const now = new Date();
-  const dateStr = now.toLocaleDateString("ja-JP", { month: "long", day: "numeric", weekday: "short" });
-
+// ── components ───────────────────────────────────────────────────────────────
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="min-h-screen bg-[#050505] text-white pb-20">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 pt-14 pb-4">
+    <div
+      className={className}
+      style={{
+        background: "#111118",
+        border: "1px solid #222",
+        borderRadius: 16,
+        padding: "16px",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p style={{ fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: "0.15em", marginBottom: 10, fontWeight: 600 }}>
+      {children}
+    </p>
+  );
+}
+
+// ── main ─────────────────────────────────────────────────────────────────────
+export default function Home() {
+  return (
+    <div style={{ minHeight: "100vh", background: "#0a0a0f", color: "#fff", paddingBottom: 100 }}>
+
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "52px 20px 16px" }}>
         <div>
-          <p className="text-xs text-white/40 uppercase tracking-widest mb-0.5">{dateStr}</p>
-          <h1 className="text-lg font-bold text-white">おはようございます 👋</h1>
+          <p style={{ fontSize: 11, color: "#555", marginBottom: 2 }}>{dateStr}</p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>今日の食事</h1>
         </div>
-        <button className="w-9 h-9 rounded-full bg-white/8 flex items-center justify-center relative">
-          <Bell className="w-4 h-4 text-white/70" />
-          <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#00FF87]" />
-        </button>
+        <div style={{
+          width: 38, height: 38, borderRadius: "50%",
+          background: "linear-gradient(135deg, #4ade80, #22c55e)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 14, fontWeight: 700, color: "#000",
+        }}>
+          G
+        </div>
       </div>
 
-      {/* 3 Score Rings */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="mx-4 mt-2 rounded-2xl bg-[#0f0f0f] border border-white/6 px-4 py-6"
-      >
-        <div className="flex items-center justify-around">
-          <ScoreRing value={75} label="Sleep" color="#4A9EFF" />
-          <ScoreRing value={82} label="Recovery" color="#00FF87" size={136} />
-          <ScoreRing value={65} label="Strain" color="#FF6B35" />
-        </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "0 16px" }}>
 
-        {/* Activity strip */}
-        <div className="flex gap-2 mt-5">
-          {activities.map(({ icon: Icon, label, value, sub, color }) => (
-            <div key={label} className="flex-1 rounded-xl bg-white/4 px-3 py-2.5">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Icon className="w-3 h-3" style={{ color }} />
-                <span className="text-[10px] text-white/50 uppercase tracking-wider">{label}</span>
-              </div>
-              <p className="text-sm font-bold text-white leading-none">{value}</p>
-              <p className="text-[10px] text-white/40 mt-0.5">{sub}</p>
+        {/* ── Diet Score Card ── */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
+          <Card>
+            <SectionLabel>本日の食事スコア</SectionLabel>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginBottom: 12 }}>
+              {scoreRecorded ? (
+                <span style={{ fontSize: 52, fontWeight: 800, color: "#4ade80", lineHeight: 1 }}>{dietScore}</span>
+              ) : (
+                <span style={{ fontSize: 32, fontWeight: 700, color: "#4ade80", lineHeight: 1 }}>集計中...</span>
+              )}
+              <span style={{ fontSize: 16, color: "#555", marginBottom: 6 }}>/ 100</span>
             </div>
-          ))}
-        </div>
-      </motion.div>
+            <ProgressBar value={dietScore} max={100} color="#4ade80" height={8} />
+            {!scoreRecorded && (
+              <p style={{ fontSize: 11, color: "#555", marginTop: 8 }}>
+                夕食を記録すると最終スコアが確定します
+              </p>
+            )}
+          </Card>
+        </motion.div>
 
-      {/* Metrics Grid */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="mx-4 mt-3 grid grid-cols-4 gap-2"
-      >
-        {metrics.map(({ label, value, trend, positive }) => (
-          <div key={label} className="rounded-xl bg-[#0f0f0f] border border-white/6 px-2.5 py-3">
-            <p className="text-[9px] text-white/40 uppercase tracking-wider mb-1">{label}</p>
-            <p className="text-xs font-bold text-white leading-none">{value}</p>
-            <p className={`text-[10px] mt-1 font-medium ${positive ? "text-[#00FF87]" : "text-red-400"}`}>{trend}</p>
-          </div>
-        ))}
-      </motion.div>
-
-      {/* Quick Actions */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-        className="mx-4 mt-3 grid grid-cols-2 gap-2"
-      >
-        {quickLinks.map(({ href, icon: Icon, label, desc }) => (
-          <Link key={href} href={href}>
-            <div className="rounded-xl bg-[#0f0f0f] border border-white/6 p-4 flex items-center gap-3 active:bg-white/5 transition-colors">
-              <div className="w-9 h-9 rounded-lg bg-[#00FF87]/10 flex items-center justify-center shrink-0">
-                <Icon className="w-4.5 h-4.5 text-[#00FF87]" />
+        {/* ── Calories Card ── */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.07 }}>
+          <Card>
+            <SectionLabel>総カロリー</SectionLabel>
+            <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 10 }}>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
+                <span style={{ fontSize: 40, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
+                  {calories.current.toLocaleString()}
+                </span>
+                <span style={{ fontSize: 13, color: "#555", marginBottom: 4 }}>/ {calories.goal.toLocaleString()} kcal</span>
               </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-white">{label}</p>
-                <p className="text-[10px] text-white/40 mt-0.5">{desc}</p>
+              <span style={{
+                fontSize: 13, fontWeight: 700,
+                color: "#4ade80",
+                background: "#4ade8015",
+                borderRadius: 8, padding: "3px 8px",
+              }}>
+                {Math.round((calories.current / calories.goal) * 100)}%
+              </span>
+            </div>
+            <ProgressBar value={calories.current} max={calories.goal} color="#4ade80" height={8} />
+            <p style={{ fontSize: 11, color: "#555", marginTop: 8 }}>
+              残り {(calories.goal - calories.current).toLocaleString()} kcal
+            </p>
+          </Card>
+        </motion.div>
+
+        {/* ── PFC Card ── */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.14 }}>
+          <Card>
+            <SectionLabel>PFC摂取量</SectionLabel>
+
+            {/* Rows */}
+            {[
+              { key: "protein", label: "タンパク質", ...pfc.protein },
+              { key: "fat",     label: "脂質",       ...pfc.fat     },
+              { key: "carbs",   label: "炭水化物",   ...pfc.carbs   },
+            ].map(({ key, label, g, goal, color }) => {
+              const pct = Math.round((g / goal) * 100);
+              return (
+                <div key={key} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
+                      <span style={{ fontSize: 12, color: "#aaa", fontWeight: 500 }}>{label}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{g}g</span>
+                      <span style={{ fontSize: 11, color: "#555" }}>/ {goal}g</span>
+                      <span style={{ fontSize: 11, color, fontWeight: 600, minWidth: 32, textAlign: "right" }}>{pct}%</span>
+                    </div>
+                  </div>
+                  <ProgressBar value={g} max={goal} color={color} height={5} />
+                </div>
+              );
+            })}
+
+            {/* Composition bar */}
+            <div style={{ marginTop: 4 }}>
+              <p style={{ fontSize: 10, color: "#444", marginBottom: 5 }}>構成比</p>
+              <div style={{ display: "flex", borderRadius: 4, overflow: "hidden", height: 6 }}>
+                <div style={{ flex: pfc.protein.g, background: "#4ade80" }} />
+                <div style={{ flex: pfc.fat.g,     background: "#fbbf24" }} />
+                <div style={{ flex: pfc.carbs.g,   background: "#60a5fa" }} />
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-white/20 ml-auto shrink-0" />
+              <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+                {[
+                  { label: "P", color: "#4ade80", g: pfc.protein.g },
+                  { label: "F", color: "#fbbf24", g: pfc.fat.g     },
+                  { label: "C", color: "#60a5fa", g: pfc.carbs.g   },
+                ].map(({ label, color, g }) => (
+                  <div key={label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 2, background: color, display: "inline-block" }} />
+                    <span style={{ fontSize: 10, color: "#666" }}>
+                      {label} {Math.round((g / totalPfcG) * 100)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </Link>
-        ))}
-      </motion.div>
+          </Card>
+        </motion.div>
 
-      {/* Today's Insight */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-        className="mx-4 mt-3"
-      >
-        <div className="rounded-xl border border-[#00FF87]/20 bg-[#00FF87]/5 px-4 py-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Activity className="w-3.5 h-3.5 text-[#00FF87]" />
-            <span className="text-[10px] font-semibold text-[#00FF87] uppercase tracking-widest">Today's Insight</span>
-          </div>
-          <p className="text-xs text-white/70 leading-relaxed">
-            回復スコアが高い今日は高強度トレーニングに最適です。タンパク質摂取を
-            <span className="text-white font-semibold"> 150g</span> 目標にすることで筋合成を最大化できます。
-          </p>
-        </div>
-      </motion.div>
+        {/* ── Meal Log Card ── */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.21 }}>
+          <Card>
+            <SectionLabel>本日の食事記録</SectionLabel>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {meals.map((meal) => (
+                <div key={meal.id} style={{
+                  display: "flex", alignItems: "center", gap: 12,
+                  background: "#0e0e15", borderRadius: 12, padding: "12px",
+                  border: "1px solid #1e1e28",
+                }}>
+                  {/* Thumbnail / emoji */}
+                  <div style={{
+                    width: 44, height: 44, borderRadius: 10,
+                    background: meal.recorded ? "#1a1a28" : "#111",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 22, flexShrink: 0,
+                    border: "1px solid #222",
+                  }}>
+                    {meal.recorded ? meal.emoji : <span style={{ color: "#333", fontSize: 18 }}>?</span>}
+                  </div>
 
-      {/* Upload CTA */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.4 }}
-        className="mx-4 mt-3"
-      >
-        <Link href="/upload">
-          <div className="rounded-xl bg-[#00FF87] px-4 py-4 flex items-center gap-3 active:opacity-90 transition-opacity">
-            <div className="flex-1">
-              <p className="text-xs font-bold text-black">血液・DNAデータをアップロード</p>
-              <p className="text-[10px] text-black/60 mt-0.5">最新の検査結果でインサイトを更新</p>
+                  {/* Info */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{meal.label}</span>
+                      {meal.recorded && meal.time && (
+                        <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 10, color: "#555" }}>
+                          <Clock style={{ width: 9, height: 9 }} />{meal.time}
+                        </span>
+                      )}
+                    </div>
+                    {meal.recorded ? (
+                      <p style={{ fontSize: 11, color: "#666", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {meal.desc}
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: 11, color: "#444" }}>未記録</p>
+                    )}
+                  </div>
+
+                  {/* Right side */}
+                  {meal.recorded ? (
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{meal.calories} kcal</p>
+                      <p style={{ fontSize: 11, color: "#4ade80", fontWeight: 600 }}>
+                        スコア {meal.score}
+                      </p>
+                    </div>
+                  ) : (
+                    <Link href="/food-scanner">
+                      <button style={{
+                        display: "flex", alignItems: "center", gap: 4,
+                        background: "#4ade8018", border: "1px solid #4ade8040",
+                        color: "#4ade80", borderRadius: 8, padding: "6px 12px",
+                        fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0,
+                      }}>
+                        <Plus style={{ width: 12, height: 12 }} />
+                        追加
+                      </button>
+                    </Link>
+                  )}
+                </div>
+              ))}
             </div>
-            <ChevronRight className="w-4 h-4 text-black/60 shrink-0" />
-          </div>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* ── Camera FAB ── */}
+      <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", zIndex: 40 }}>
+        <Link href="/food-scanner">
+          <motion.button
+            whileTap={{ scale: 0.93 }}
+            style={{
+              display: "flex", alignItems: "center", gap: 8,
+              background: "#4ade80", color: "#000",
+              border: "none", borderRadius: 999,
+              padding: "14px 28px", fontSize: 14, fontWeight: 700,
+              cursor: "pointer",
+              boxShadow: "0 0 24px #4ade8060",
+            }}
+          >
+            <Camera style={{ width: 18, height: 18 }} />
+            食事を撮影する
+          </motion.button>
         </Link>
-      </motion.div>
+      </div>
     </div>
   );
 }
