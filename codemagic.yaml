@@ -11,8 +11,6 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.bioperflab.app
-        certificate: ios_distribution
-        provisioning_profile: BioPerformanceLab_AppStore
       groups:
         - ios-credentials
       vars:
