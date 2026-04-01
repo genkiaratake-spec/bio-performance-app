@@ -33,6 +33,7 @@ workflows:
 
       - name: Build iOS app
         script: |
+          echo "=== ディレクトリ確認 ===" && find . -name "*.xcworkspace" -type d
           xcode-project build-ipa \
             --workspace ios/App/App.xcworkspace \
             --scheme App \
