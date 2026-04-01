@@ -1,8 +1,17 @@
+app_store_connect:
+  Genki:
+    key_id: Q472B9764J
+    issuer_id: 40186824-73cb-4c4e-817f-80eccce78d72
+    key: $APP_STORE_CONNECT_PRIVATE_KEY
+
 workflows:
   ios-release:
     name: iOS Release
     max_build_duration: 60
     instance_type: mac_mini_m2
+
+    integrations:
+      app_store_connect: Genki
 
     environment:
       ios_signing:
