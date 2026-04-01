@@ -11,8 +11,6 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.bioperflab.app
-      groups:
-        - ios-credentials
       vars:
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
@@ -29,20 +27,6 @@ workflows:
         script: |
           npx cap add ios || true
           npx cap sync ios
-
-      - name: Install certificate and provisioning profile
-        script: |
-          # Install provisioning profile
-          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          mkdir -p "$PROFILES_DIR"
-          echo $PROVISIONING_PROFILE | base64 --decode > /tmp/profile.mobileprovision
-          UUID=$(grep -a -A1 'UUID' /tmp/profile.mobileprovision | grep -io '[-A-F0-9]\{36\}')
-          cp /tmp/profile.mobileprovision "$PROFILES_DIR/$UUID.mobileprovision"
-          echo "Installed provisioning profile: $UUID"
-
-          # Install certificate into keychain
-          echo $CERTIFICATE | base64 --decode > /tmp/cert.p12
-          security import /tmp/cert.p12 -k ~/Library/Keychains/login.keychain-db -P $CERTIFICATE_PASSWORD -T /usr/bin/codesign -T /usr/bin/security
 
       - name: Set up code signing
         script: xcode-project use-profiles
