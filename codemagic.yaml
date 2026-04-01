@@ -14,7 +14,6 @@ workflows:
       vars:
         XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
-        BUILD_NUMBER: 2
       node: latest
       xcode: latest
 
@@ -34,11 +33,13 @@ workflows:
 
       - name: Build iOS app
         script: |
+          cd ios/App
+          agvtool new-version -all 2
+          cd ../..
           xcode-project build-ipa \
             --workspace ios/App/App.xcodeproj/project.xcworkspace \
             --scheme App \
-            --config Release \
-            --build-number $BUILD_NUMBER
+            --config Release
 
     artifacts:
       - build/ios/ipa/*.ipa
