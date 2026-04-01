@@ -1,5 +1,9 @@
 {
   "appId": "com.bioperflab.app",
   "appName": "Bio-Performance Lab",
-  "webDir": "www"
+  "webDir": "www",
+  "server": {
+    "url": "https://bioperfapp-pzwiebel.manus.space",
+    "cleartext": true
+  }
 }
