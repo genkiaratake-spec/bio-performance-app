@@ -22,7 +22,9 @@ workflows:
 
     scripts:
       - name: Install npm dependencies
-        script: npm install
+        script: |
+          npm install
+          npm install @capacitor/ios
 
       - name: Add iOS platform (if not present)
         script: |
