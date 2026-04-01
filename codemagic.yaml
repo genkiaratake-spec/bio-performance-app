@@ -14,11 +14,10 @@ workflows:
       groups:
         - ios-credentials
       vars:
-        XCODE_WORKSPACE: ios/App/App.xcworkspace
+        XCODE_PROJECT: ios/App/App.xcodeproj
         XCODE_SCHEME: App
       node: latest
       xcode: latest
-      cocoapods: default
 
     scripts:
       - name: Install npm dependencies
@@ -28,24 +27,26 @@ workflows:
 
       - name: Add iOS platform (if not present)
         script: |
-          npm install @capacitor/ios
           npx cap add ios || true
           npx cap sync ios
-          ls -la ios/ || echo "ios folder not found"
-          ls -la ios/App/ || echo "ios/App folder not found"
-          find . -name "Podfile" || echo "No Podfile found anywhere"
-          ls -la ios/
-          ls -la ios/App/
-          pod install --project-directory=ios/App
 
       - name: Set up code signing
         script: xcode-project use-profiles
 
       - name: Build iOS app
         script: |
-          xcode-project build-ipa \
-            --workspace "$XCODE_WORKSPACE" \
-            --scheme "$XCODE_SCHEME"
+          xcodebuild \
+            -project "$XCODE_PROJECT" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -archivePath build/App.xcarchive \
+            -allowProvisioningUpdates \
+            archive
+          xcodebuild \
+            -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportOptionsPlist /tmp/ExportOptions.plist \
+            -exportPath build/ios/ipa
 
     artifacts:
       - build/ios/ipa/*.ipa
