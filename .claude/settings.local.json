@@ -12,7 +12,22 @@
       "Bash(where gh:*)",
       "Bash(winget install:*)",
       "Bash(export PATH=\"$PATH:/c/Program Files/GitHub CLI\")",
-      "Bash(gh repo:*)"
+      "Bash(gh repo:*)",
+      "Bash(openssl version:*)",
+      "Bash(openssl req:*)",
+      "Bash(openssl x509:*)",
+      "Bash(openssl pkcs12:*)",
+      "Bash(\"C:/Users/genki/OneDrive/Desktop/p12_base64.txt\")",
+      "Bash(unzip -l \"C:/Users/genki/Downloads/bio-performance-app.zip\")",
+      "Bash(mkdir -p /tmp/bio-zip)",
+      "Bash(unzip -o \"C:/Users/genki/Downloads/bio-performance-app.zip\" -d /tmp/bio-zip)",
+      "Read(//tmp/**)",
+      "Read(//tmp/bio-zip/**)",
+      "Bash(cp -r /tmp/bio-zip/client \"/c/Users/genki/OneDrive/bio-performance-app/\")",
+      "Bash(cp -r /tmp/bio-zip/shared \"/c/Users/genki/OneDrive/bio-performance-app/\")",
+      "Bash(cp -r /tmp/bio-zip/patches \"/c/Users/genki/OneDrive/bio-performance-app/\")",
+      "Bash(cp /tmp/bio-zip/tsconfig.json \"/c/Users/genki/OneDrive/bio-performance-app/\")",
+      "Bash(cp /tmp/bio-zip/tsconfig.node.json \"/c/Users/genki/OneDrive/bio-performance-app/\")"
     ]
   }
 }

@@ -22,6 +22,7 @@ workflows:
         script: |
           npm install
           npm install @capacitor/ios
+          npm run build
 
       - name: Add iOS platform (if not present)
         script: |
