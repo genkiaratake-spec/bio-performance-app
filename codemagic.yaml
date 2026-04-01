@@ -1,9 +1,3 @@
-app_store_connect:
-  Genki:
-    key_id: Q472B9764J
-    issuer_id: 40186824-73cb-4c4e-817f-80eccce78d72
-    key: $APP_STORE_CONNECT_PRIVATE_KEY
-
 workflows:
   ios-release:
     name: iOS Release
@@ -17,7 +11,6 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.bioperflab.app
-
       groups:
         - ios-credentials
       vars:
@@ -28,22 +21,6 @@ workflows:
       cocoapods: default
 
     scripts:
-      - name: Install certificate and provisioning profile
-        script: |
-          # Install certificate
-          echo $CERTIFICATE | base64 --decode > /tmp/certificate.cer
-          security create-keychain -p "" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "" build.keychain
-          security import /tmp/certificate.cer -k build.keychain -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-
-          # Install provisioning profile
-          echo $PROVISIONING_PROFILE | base64 --decode > /tmp/profile.mobileprovision
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          UUID=$(grep -a -A1 'UUID' /tmp/profile.mobileprovision | grep -io '[-A-F0-9]\{36\}')
-          cp /tmp/profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
-
       - name: Install npm dependencies
         script: npm install
 
