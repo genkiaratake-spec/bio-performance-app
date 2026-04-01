@@ -35,7 +35,7 @@ workflows:
         script: |
           echo "=== ディレクトリ確認 ===" && find . -name "*.xcworkspace" -type d
           xcode-project build-ipa \
-            --workspace ios/App/App.xcworkspace \
+            --workspace ios/App/App.xcodeproj/project.xcworkspace \
             --scheme App \
             --config Release \
             --archive-xcargs "PROVISIONING_PROFILE_SPECIFIER='BioPerformanceLab_AppStore_2'"
