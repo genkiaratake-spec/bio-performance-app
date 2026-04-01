@@ -28,13 +28,12 @@ workflows:
 
       - name: Add iOS platform (if not present)
         script: |
-          if [ ! -d "ios" ]; then
-            npx cap add ios
-          fi
+          npm install @capacitor/ios
+          npx cap add ios
           npx cap sync ios
 
       - name: Install CocoaPods
-        script: cd ios/App && pod install
+        script: cd ios/App && pod install --repo-update
 
       - name: Set up code signing
         script: xcode-project use-profiles
