@@ -33,35 +33,11 @@ workflows:
 
       - name: Build iOS app
         script: |
-          cat > /tmp/ExportOptions.plist << EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store-connect</string>
-            <key>teamID</key>
-            <string>HY55Y7VZNJ</string>
-            <key>provisioningProfiles</key>
-            <dict>
-              <key>com.bioperflab.app</key>
-              <string>BioPerformanceLab_AppStore_2</string>
-            </dict>
-          </dict>
-          </plist>
-          EOF
-          xcodebuild \
-            -project "$XCODE_PROJECT" \
-            -scheme "$XCODE_SCHEME" \
-            -configuration Release \
-            -archivePath build/App.xcarchive \
-            -allowProvisioningUpdates \
-            archive
-          xcodebuild \
-            -exportArchive \
-            -archivePath build/App.xcarchive \
-            -exportOptionsPlist /tmp/ExportOptions.plist \
-            -exportPath build/ios/ipa
+          xcode-project build-iphoneos \
+            --workspace ios/App/App.xcworkspace \
+            --scheme App \
+            --config Release \
+            --archive-xcargs "PROVISIONING_PROFILE_SPECIFIER='BioPerformanceLab_AppStore_2'"
 
     artifacts:
       - build/ios/ipa/*.ipa
