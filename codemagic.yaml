@@ -33,7 +33,10 @@ workflows:
           npx cap sync ios
 
       - name: Install CocoaPods
-        script: cd ios/App && pod install --repo-update
+        script: |
+          find . -name "Podfile" -type f
+          PODFILE_DIR=$(find . -name "Podfile" -type f | head -1 | xargs dirname)
+          cd $PODFILE_DIR && pod install --repo-update
 
       - name: Set up code signing
         script: xcode-project use-profiles
