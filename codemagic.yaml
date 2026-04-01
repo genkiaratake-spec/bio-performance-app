@@ -30,6 +30,24 @@ workflows:
           npx cap add ios || true
           npx cap sync ios
 
+      - name: Install certificate and provisioning profile
+        script: |
+          # Install provisioning profile
+          PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES_DIR"
+          echo $PROVISIONING_PROFILE | base64 --decode > /tmp/profile.mobileprovision
+          UUID=$(grep -a -A1 'UUID' /tmp/profile.mobileprovision | grep -io '[-A-F0-9]\{36\}')
+          cp /tmp/profile.mobileprovision "$PROFILES_DIR/$UUID.mobileprovision"
+          echo "Installed provisioning profile: $UUID"
+
+          # Install certificate into keychain
+          echo $CERTIFICATE | base64 --decode > /tmp/certificate.p12
+          security create-keychain -p "" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "" build.keychain
+          security import /tmp/certificate.p12 -k build.keychain -P "1234" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+
       - name: Set up code signing
         script: xcode-project use-profiles
 
