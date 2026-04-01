@@ -5,7 +5,7 @@ workflows:
     instance_type: mac_mini_m2
 
     integrations:
-      app_store_connect: Genki
+      app_store_connect: Genki2
 
     environment:
       ios_signing:
