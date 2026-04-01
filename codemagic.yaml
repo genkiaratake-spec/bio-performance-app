@@ -45,7 +45,7 @@ workflows:
             <key>provisioningProfiles</key>
             <dict>
               <key>com.bioperflab.app</key>
-              <string>BioPerformanceLab_AppStore</string>
+              <string>BioPerformanceLab_AppStore_2</string>
             </dict>
           </dict>
           </plist>
