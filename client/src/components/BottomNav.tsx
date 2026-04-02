@@ -3,8 +3,8 @@ import { Home, BarChart2, Upload, Pill } from "lucide-react";
 
 const tabs = [
   { href: "/", icon: Home, label: "Home" },
-  { href: "/analysis", icon: BarChart2, label: "Analysis" },
   { href: "/upload", icon: Upload, label: "Upload" },
+  { href: "/analysis", icon: BarChart2, label: "Analysis" },
   { href: "/supplements", icon: Pill, label: "Supplements" },
 ];
 

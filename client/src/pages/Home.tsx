@@ -294,7 +294,7 @@ export default function Home() {
       </div>
 
       {/* ── Camera FAB ── */}
-      <div style={{ position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)", zIndex: 40 }}>
+      <div style={{ position: "fixed", bottom: 84, right: 20, zIndex: 50 }}>
         <Link href="/food-scanner">
           <motion.button
             whileTap={{ scale: 0.93 }}
@@ -302,13 +302,14 @@ export default function Home() {
               display: "flex", alignItems: "center", gap: 8,
               background: "#4ade80", color: "#000",
               border: "none", borderRadius: 999,
-              padding: "14px 28px", fontSize: 14, fontWeight: 700,
+              padding: "13px 20px", fontSize: 13, fontWeight: 700,
               cursor: "pointer",
               boxShadow: "0 0 24px #4ade8060",
+              whiteSpace: "nowrap",
             }}
           >
-            <Camera style={{ width: 18, height: 18 }} />
-            食事を撮影する
+            <Camera style={{ width: 16, height: 16 }} />
+            食事を撮影
           </motion.button>
         </Link>
       </div>

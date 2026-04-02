@@ -126,13 +126,25 @@ export default function Upload() {
         </motion.div>
 
         {/* Info banner */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="elevated-card rounded-xl p-4 mb-6 flex items-start gap-3">
-          <Shield className="w-4 h-4 text-teal mt-0.5 shrink-0" />
-          <div className="text-[11px] text-muted-foreground leading-relaxed">
-            <span className="font-semibold text-foreground">対応検査機関: </span>
-            SRL、BML、LSI メディエンス、ユーグレナ（mycode）、ジェネシスヘルスケア等。
-            データは暗号化して保存され、第三者に共有されることはありません。
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="elevated-card rounded-xl p-4 mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Shield className="w-4 h-4 text-teal shrink-0" />
+            <span className="text-xs font-bold text-foreground">対応検査機関</span>
           </div>
+          <div className="flex flex-wrap gap-2 mb-3">
+            {["SRL", "BML", "LSIメディエンス", "ユーグレナ（mycode）", "ジェネシスヘルスケア", "その他"].map((lab) => (
+              <span
+                key={lab}
+                className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
+                style={{ background: "#4ade8018", color: "#4ade80", border: "1px solid #4ade8030" }}
+              >
+                {lab}
+              </span>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            データは暗号化して保存され、第三者に共有されることはありません。
+          </p>
         </motion.div>
 
         {/* Upload cards */}

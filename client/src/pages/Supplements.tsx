@@ -1,6 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { motion } from "framer-motion";
-import { Pill, AlertCircle, CheckCircle2, Info, ShoppingCart, Star, TrendingUp, ArrowRight } from "lucide-react";
+import { Pill, AlertCircle, CheckCircle2, Info, ShoppingCart, Star, TrendingUp, ArrowRight, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -100,6 +100,12 @@ export default function Supplements() {
     });
   };
 
+  const handleSingleOrder = (name: string) => {
+    toast.info("近日公開予定", {
+      description: `${name}の個別注文機能は近日公開予定です。`,
+    });
+  };
+
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
@@ -174,6 +180,18 @@ export default function Supplements() {
                           <BiomarkerBar current={supp.currentValue} target={supp.targetValue} />
                         </div>
                       )}
+                    </div>
+
+                    {/* Order button */}
+                    <div className="mt-3">
+                      <button
+                        onClick={() => handleSingleOrder(supp.name)}
+                        className="flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+                        style={{ background: "#4ade8018", color: "#4ade80", border: "1px solid #4ade8030" }}
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5" />
+                        注文する
+                      </button>
                     </div>
                   </div>
                 </div>
