@@ -100,7 +100,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 // ── main ─────────────────────────────────────────────────────────────────────
 export default function Home() {
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0f", color: "#fff", paddingBottom: 100 }}>
+    <div style={{ height: "100vh", overflowY: "auto", WebkitOverflowScrolling: "touch", background: "#0a0a0f", color: "#fff", paddingBottom: 100 }}>
 
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "52px 20px 16px" }}>

@@ -1,6 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { motion } from "framer-motion";
-import { Upload as UploadIcon, FileText, Dna, Droplets, CheckCircle2, ArrowRight, Info, Shield } from "lucide-react";
+import { Upload as UploadIcon, FileText, CheckCircle2, ArrowRight, Info, Shield, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useCallback } from "react";
 import { toast } from "sonner";
@@ -8,153 +8,178 @@ import { Link } from "wouter";
 
 type UploadState = "idle" | "uploading" | "analyzing" | "complete";
 
+const COMING_SOON_BADGE = (
+  <span style={{
+    fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999,
+    background: "#f97316/15", color: "#f97316",
+    backgroundColor: "rgba(249,115,22,0.15)",
+    border: "1px solid rgba(249,115,22,0.3)",
+    marginLeft: 6, whiteSpace: "nowrap" as const,
+  }}>
+    近日対応予定
+  </span>
+);
+
 export default function Upload() {
-  const [bloodTestState, setBloodTestState] = useState<UploadState>("idle");
-  const [dnaTestState, setDnaTestState] = useState<UploadState>("idle");
-  const [bloodFileName, setBloodFileName] = useState("");
-  const [dnaFileName, setDnaFileName] = useState("");
+  const [checkupState, setCheckupState] = useState<UploadState>("idle");
+  const [checkupFileName, setCheckupFileName] = useState("");
 
-  const simulateUpload = useCallback((type: "blood" | "dna") => {
-    const setState = type === "blood" ? setBloodTestState : setDnaTestState;
-    const setName = type === "blood" ? setBloodFileName : setDnaFileName;
-
-    const fakeName = type === "blood" ? "blood_test_2026_03.pdf" : "dna_analysis_report.pdf";
-    setName(fakeName);
-    setState("uploading");
-
+  const simulateUpload = useCallback(() => {
+    const fakeName = "checkup_2026_03.pdf";
+    setCheckupFileName(fakeName);
+    setCheckupState("uploading");
     setTimeout(() => {
-      setState("analyzing");
+      setCheckupState("analyzing");
       setTimeout(() => {
-        setState("complete");
-        toast.success(
-          type === "blood" ? "血液検査データの解析が完了しました" : "DNA検査データの解析が完了しました"
-        );
+        setCheckupState("complete");
+        toast.success("健康診断データの解析が完了しました", {
+          description: "食事アドバイスが更新されました。",
+        });
       }, 2000);
     }, 1500);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, type: "blood" | "dna") => {
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    simulateUpload(type);
+    simulateUpload();
   }, [simulateUpload]);
-
-  const handleFileSelect = useCallback((type: "blood" | "dna") => {
-    simulateUpload(type);
-  }, [simulateUpload]);
-
-  const renderUploadCard = (
-    type: "blood" | "dna",
-    state: UploadState,
-    fileName: string,
-    icon: typeof Droplets,
-    title: string,
-    description: string,
-    accentColor: string,
-  ) => {
-    const Icon = icon;
-    const isComplete = state === "complete";
-    return (
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: type === "blood" ? 0.1 : 0.15 }}
-        className={`elevated-card rounded-xl p-5 transition-all ${isComplete ? "ring-1 ring-teal/30" : ""}`}
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${type === "blood" ? "bg-teal/10" : "bg-amber/10"}`}>
-            <Icon className={`w-4 h-4 ${accentColor}`} />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold">{title}</h3>
-            <p className="text-[11px] text-muted-foreground">{description}</p>
-          </div>
-          {isComplete && <CheckCircle2 className="w-4 h-4 text-teal ml-auto" />}
-        </div>
-
-        {state === "idle" && (
-          <div
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => handleDrop(e, type)}
-            onClick={() => handleFileSelect(type)}
-            className="border border-dashed border-border rounded-xl p-8 text-center hover:border-primary/40 transition-colors cursor-pointer group"
-          >
-            <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3 group-hover:bg-primary/10 transition-colors">
-              <UploadIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
-            </div>
-            <p className="text-xs text-muted-foreground mb-0.5">PDF・画像ファイルをドラッグ＆ドロップ</p>
-            <p className="text-[10px] text-muted-foreground/60">またはクリックしてファイルを選択</p>
-          </div>
-        )}
-
-        {state === "uploading" && (
-          <div className="border border-border rounded-xl p-8 text-center">
-            <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-            <p className="text-xs font-semibold">アップロード中...</p>
-            <p className="text-[10px] text-muted-foreground mt-1" style={{ fontFamily: "var(--font-mono)" }}>{fileName}</p>
-          </div>
-        )}
-
-        {state === "analyzing" && (
-          <div className="border border-amber/20 rounded-xl p-8 text-center">
-            <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-amber border-t-transparent animate-spin" />
-            <p className="text-xs font-semibold text-amber">AIが解析中...</p>
-            <p className="text-[10px] text-muted-foreground mt-1">データを読み取り、バイオマーカーを抽出しています</p>
-          </div>
-        )}
-
-        {state === "complete" && (
-          <div className="border border-teal/20 rounded-xl p-8 text-center">
-            <CheckCircle2 className="w-8 h-8 mx-auto mb-3 text-teal" />
-            <p className="text-xs font-semibold text-teal">解析完了</p>
-            <p className="text-[10px] text-muted-foreground mt-1" style={{ fontFamily: "var(--font-mono)" }}>{fileName}</p>
-          </div>
-        )}
-      </motion.div>
-    );
-  };
-
-  const bothComplete = bloodTestState === "complete" && dnaTestState === "complete";
 
   return (
     <DashboardLayout>
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-2xl mx-auto">
+
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
           <p className="stat-label mb-1">Data Integration</p>
-          <h1 className="text-2xl lg:text-3xl font-bold">データ連携</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">血液検査・DNA検査の結果をアップロードして、パーソナライズ解析を開始しましょう。</p>
-        </motion.div>
-
-        {/* Info banner */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="elevated-card rounded-xl p-4 mb-6">
-          <div className="flex items-center gap-2 mb-3">
-            <Shield className="w-4 h-4 text-teal shrink-0" />
-            <span className="text-xs font-bold text-foreground">対応検査機関</span>
-          </div>
-          <div className="flex flex-wrap gap-2 mb-3">
-            {["SRL", "BML", "LSIメディエンス", "ユーグレナ（mycode）", "ジェネシスヘルスケア", "その他"].map((lab) => (
-              <span
-                key={lab}
-                className="text-[11px] font-semibold px-2.5 py-1 rounded-full"
-                style={{ background: "#4ade8018", color: "#4ade80", border: "1px solid #4ade8030" }}
-              >
-                {lab}
-              </span>
-            ))}
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            データは暗号化して保存され、第三者に共有されることはありません。
+          <h1 className="text-2xl lg:text-3xl font-bold">健康データを登録</h1>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            健康診断・人間ドックの結果をアップロードして、パーソナライズ食事アドバイスを始めましょう。
           </p>
         </motion.div>
 
-        {/* Upload cards */}
-        <div className="grid md:grid-cols-2 gap-4 mb-6">
-          {renderUploadCard("blood", bloodTestState, bloodFileName, Droplets, "血液検査", "直近の血液検査結果", "text-teal")}
-          {renderUploadCard("dna", dnaTestState, dnaFileName, Dna, "DNA検査", "遺伝子検査レポート", "text-amber")}
-        </div>
+        {/* 対応している健診バッジ */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }} className="elevated-card rounded-xl p-4 mb-4">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">対応している健診</p>
+          <div className="flex flex-wrap gap-2">
+            {["協会けんぽ", "企業健診", "自治体特定健診", "人間ドック"].map((label) => (
+              <span
+                key={label}
+                className="text-[11px] font-semibold px-3 py-1 rounded-full"
+                style={{ background: "rgba(74,222,128,0.12)", color: "#4ade80", border: "1px solid rgba(74,222,128,0.25)" }}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </motion.div>
 
-        {/* Supported formats */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="elevated-card rounded-xl p-5 mb-6">
+        {/* Section 1: 健康診断・人間ドック（メイン） */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+          className={`elevated-card rounded-xl p-5 mb-3 transition-all ${checkupState === "complete" ? "ring-1 ring-teal/30" : ""}`}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-lg bg-teal/10 flex items-center justify-center text-lg shrink-0">📋</div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold flex items-center">健康診断・人間ドック結果</h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">直近1〜3年分の結果をアップロード</p>
+            </div>
+            {checkupState === "complete" && <CheckCircle2 className="w-4 h-4 text-teal shrink-0" />}
+          </div>
+
+          {checkupState === "idle" && (
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDrop}
+              onClick={simulateUpload}
+              className="border border-dashed border-border rounded-xl p-8 text-center hover:border-primary/40 transition-colors cursor-pointer group"
+            >
+              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3 group-hover:bg-primary/10 transition-colors">
+                <UploadIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+              </div>
+              <p className="text-xs text-muted-foreground mb-0.5">PDF・画像（jpg/png）をドラッグ＆ドロップ</p>
+              <p className="text-[10px] text-muted-foreground/60">またはクリックしてファイルを選択</p>
+            </div>
+          )}
+
+          {checkupState === "uploading" && (
+            <div className="border border-border rounded-xl p-8 text-center">
+              <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              <p className="text-xs font-semibold">アップロード中...</p>
+              <p className="text-[10px] text-muted-foreground mt-1" style={{ fontFamily: "var(--font-mono)" }}>{checkupFileName}</p>
+            </div>
+          )}
+
+          {checkupState === "analyzing" && (
+            <div className="border border-amber/20 rounded-xl p-8 text-center">
+              <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-amber border-t-transparent animate-spin" />
+              <p className="text-xs font-semibold text-amber">AIが解析中...</p>
+              <p className="text-[10px] text-muted-foreground mt-1">データを読み取り、バイオマーカーを抽出しています</p>
+            </div>
+          )}
+
+          {checkupState === "complete" && (
+            <div className="border border-teal/20 rounded-xl p-8 text-center">
+              <CheckCircle2 className="w-8 h-8 mx-auto mb-3 text-teal" />
+              <p className="text-xs font-semibold text-teal">解析完了</p>
+              <p className="text-[10px] text-muted-foreground mt-1" style={{ fontFamily: "var(--font-mono)" }}>{checkupFileName}</p>
+            </div>
+          )}
+        </motion.div>
+
+        {/* Section 2: 血液検査（グレーアウト） */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
+          className="elevated-card rounded-xl p-5 mb-3"
+          style={{ opacity: 0.5 }}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-lg shrink-0">🩸</div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold flex items-center flex-wrap gap-1">
+                血液検査結果
+                {COMING_SOON_BADGE}
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">SRL・BML・LSIメディエンス等の検査結果</p>
+            </div>
+          </div>
+          <div
+            className="border border-dashed border-border rounded-xl p-8 text-center"
+            style={{ pointerEvents: "none" }}
+          >
+            <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3">
+              <UploadIcon className="w-5 h-5 text-muted-foreground/40" />
+            </div>
+            <p className="text-xs text-muted-foreground/50">近日対応予定</p>
+          </div>
+        </motion.div>
+
+        {/* Section 3: DNA検査（グレーアウト） */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}
+          className="elevated-card rounded-xl p-5 mb-4"
+          style={{ opacity: 0.5 }}
+        >
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-lg shrink-0">🧬</div>
+            <div className="flex-1">
+              <h3 className="text-sm font-bold flex items-center flex-wrap gap-1">
+                DNA検査結果
+                {COMING_SOON_BADGE}
+              </h3>
+              <p className="text-[11px] text-muted-foreground mt-0.5">ユーグレナ（mycode）・ジェネシスヘルスケア等</p>
+            </div>
+          </div>
+          <div
+            className="border border-dashed border-border rounded-xl p-8 text-center"
+            style={{ pointerEvents: "none" }}
+          >
+            <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3">
+              <UploadIcon className="w-5 h-5 text-muted-foreground/40" />
+            </div>
+            <p className="text-xs text-muted-foreground/50">近日対応予定</p>
+          </div>
+        </motion.div>
+
+        {/* 対応フォーマット */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="elevated-card rounded-xl p-5 mb-4">
           <h3 className="text-xs font-bold mb-3">対応フォーマット</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
@@ -164,7 +189,7 @@ export default function Upload() {
               { ext: "JSON", desc: "構造化データ" },
             ].map((fmt) => (
               <div key={fmt.ext} className="flex items-center gap-2 p-2.5 rounded-lg bg-card">
-                <FileText className="w-3.5 h-3.5 text-muted-foreground/60" />
+                <FileText className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
                 <div>
                   <p className="text-[11px] font-semibold" style={{ fontFamily: "var(--font-mono)" }}>{fmt.ext}</p>
                   <p className="text-[10px] text-muted-foreground">{fmt.desc}</p>
@@ -174,9 +199,24 @@ export default function Upload() {
           </div>
         </motion.div>
 
+        {/* プライバシー */}
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.24 }}
+          className="elevated-card rounded-xl p-4 mb-4 flex items-start gap-3"
+          style={{ borderColor: "rgba(74,222,128,0.15)" }}
+        >
+          <Lock className="w-4 h-4 text-teal mt-0.5 shrink-0" />
+          <div>
+            <p className="text-xs font-semibold text-foreground mb-1">データの安全性</p>
+            <p className="text-[11px] text-muted-foreground leading-relaxed">
+              アップロードされたデータはAES-256で暗号化して保存され、第三者に共有されることはありません。
+              食事アドバイスの生成のみに使用されます。
+            </p>
+          </div>
+        </motion.div>
+
         {/* Next step */}
-        {bothComplete && (
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }} className="text-center">
+        {checkupState === "complete" && (
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.4 }} className="text-center mb-4">
             <Link href="/analysis">
               <Button className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold h-10 px-8">
                 食事解析を見る <ArrowRight className="w-4 h-4" />
@@ -186,10 +226,14 @@ export default function Upload() {
         )}
 
         {/* Disclaimer */}
-        <div className="mt-6 flex items-start gap-2 text-[11px] text-muted-foreground">
+        <div className="flex items-start gap-2 text-[11px] text-muted-foreground pb-4">
           <Info className="w-3 h-3 mt-0.5 shrink-0" />
-          <p>アップロードされたデータはAIによる栄養最適化の目的のみに使用され、医療診断には使用されません。</p>
+          <p>
+            ※本サービスは食事アドバイスを目的とするものであり、医療上の診断・処方ではありません。
+            体調に不安がある場合は必ず医療機関にご相談ください。
+          </p>
         </div>
+
       </div>
     </DashboardLayout>
   );
