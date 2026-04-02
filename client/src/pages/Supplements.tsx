@@ -1,8 +1,9 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { motion } from "framer-motion";
-import { Pill, AlertCircle, CheckCircle2, Info, ShoppingCart, Star, TrendingUp, ArrowRight, ShoppingBag } from "lucide-react";
+import { Pill, AlertCircle, CheckCircle2, Info, ShoppingCart, Star, TrendingUp, ArrowRight, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { SUPPLEMENT_AMAZON_URLS } from "@/const";
 
 type Supplement = {
   name: string;
@@ -94,16 +95,15 @@ function BiomarkerBar({ current, target }: { current: string; target: string }) 
 export default function Supplements() {
   const totalMonthly = supplements.reduce((sum, s) => sum + s.monthlyPrice, 0);
 
-  const handleOrder = () => {
-    toast.success("サプリメントの注文リクエストを送信しました（デモ）", {
-      description: "注文確認メールをお送りします。",
+  const handleOpenAllAmazon = () => {
+    supplements.forEach((s) => {
+      const url = SUPPLEMENT_AMAZON_URLS[s.name];
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
     });
   };
 
-  const handleSingleOrder = (name: string) => {
-    toast.info("近日公開予定", {
-      description: `${name}の個別注文機能は近日公開予定です。`,
-    });
+  const handleSubscriptionOrder = () => {
+    toast.info("定期便機能は準備中です。しばらくお待ちください。");
   };
 
   return (
@@ -182,16 +182,17 @@ export default function Supplements() {
                       )}
                     </div>
 
-                    {/* Order button */}
+                    {/* Amazon button */}
                     <div className="mt-3">
-                      <button
-                        onClick={() => handleSingleOrder(supp.name)}
-                        className="flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
-                        style={{ background: "#4ade8018", color: "#4ade80", border: "1px solid #4ade8030" }}
+                      <a
+                        href={SUPPLEMENT_AMAZON_URLS[supp.name]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors bg-orange-500 hover:bg-orange-600 text-white"
                       >
-                        <ShoppingBag className="w-3.5 h-3.5" />
-                        注文する
-                      </button>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Amazonで見る →
+                      </a>
                     </div>
                   </div>
                 </div>
@@ -205,13 +206,30 @@ export default function Supplements() {
           <Star className="w-5 h-5 text-amber mx-auto mb-3" />
           <h3 className="text-base font-bold mb-1.5">パーソナライズ・サプリメントパックを注文</h3>
           <p className="text-xs text-muted-foreground mb-4">上記のサプリメントを、1日分ずつ個包装でお届けします。</p>
-          <Button onClick={handleOrder} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold h-10 px-8">
-            <ShoppingCart className="w-4 h-4" /> 月額 ¥{totalMonthly.toLocaleString()} で注文する
-          </Button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Button
+              onClick={handleOpenAllAmazon}
+              className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold h-10 px-8"
+            >
+              <ShoppingCart className="w-4 h-4" /> 各サプリをAmazonで探す
+            </Button>
+            <Button
+              onClick={handleSubscriptionOrder}
+              variant="outline"
+              className="gap-2 text-sm font-semibold h-10 px-6 bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:text-gray-200"
+            >
+              近日：定期便で一括注文
+            </Button>
+          </div>
         </motion.div>
 
+        {/* Affiliate notice */}
+        <p className="mt-4 text-xs text-gray-500">
+          ※ Amazonリンクはアフィリエイトリンクを含む場合があります。
+        </p>
+
         {/* Disclaimer */}
-        <div className="mt-6 flex items-start gap-2 text-[11px] text-muted-foreground">
+        <div className="mt-3 flex items-start gap-2 text-[11px] text-muted-foreground">
           <Info className="w-3 h-3 mt-0.5 shrink-0" />
           <p>
             サプリメントの提案は管理栄養士監修のアルゴリズムに基づくものであり、医薬品の処方ではありません。
