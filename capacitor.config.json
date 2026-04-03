@@ -1,5 +1,9 @@
 {
   "appId": "com.bioperflab.app",
   "appName": "Bio-Performance Lab",
-  "webDir": "www"
+  "webDir": "www",
+  "server": {
+    "hostname": "bio-performance-app.vercel.app",
+    "allowNavigation": ["bio-performance-app.vercel.app"]
+  }
 }
