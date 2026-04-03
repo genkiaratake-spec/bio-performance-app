@@ -5,5 +5,10 @@
   "server": {
     "hostname": "bio-performance-app.vercel.app",
     "allowNavigation": ["bio-performance-app.vercel.app"]
+  },
+  "ios": {
+    "allowsLinkPreview": false,
+    "scrollEnabled": true,
+    "limitsNavigationsToAppBoundDomains": false
   }
 }
