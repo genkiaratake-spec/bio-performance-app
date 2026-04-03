@@ -216,7 +216,7 @@ export default function FoodScanner() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.05 }} className="elevated-card rounded-xl p-3.5 mb-6 flex items-start gap-3">
           <Info className="w-4 h-4 text-teal mt-0.5 shrink-0" />
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            栄養素の推定値はAIによる概算です。管理栄養士監修のアルゴリズムに基づく<span className="font-medium text-foreground">健康増進・パフォーマンス最適化</span>を目的とした提案であり、医療上の診断・処方ではありません。
+            栄養素の推定値はAIによる概算です。AIによる解析に基づく<span className="font-medium text-foreground">健康増進・パフォーマンス最適化</span>を目的とした提案であり、医療上の診断・処方ではありません。
           </p>
         </motion.div>
 

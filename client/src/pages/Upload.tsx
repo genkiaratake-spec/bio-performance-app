@@ -508,7 +508,7 @@ export default function Upload() {
           <div>
             <p className="text-xs font-semibold text-foreground mb-1">データの安全性</p>
             <p className="text-[11px] text-muted-foreground leading-relaxed">
-              アップロードされたデータはAES-256で暗号化して保存され、第三者に共有されることはありません。
+              アップロードされたデータは端末内にのみ保存され、第三者に共有されることはありません。
               食事アドバイスの生成のみに使用されます。
             </p>
           </div>

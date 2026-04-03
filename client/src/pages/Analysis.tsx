@@ -64,6 +64,39 @@ export default function Analysis() {
   const [error, setError] = useState<string | null>(null);
   const [hasHealthData, setHasHealthData] = useState<boolean | null>(null);
 
+  const runAnalysis = (raw: string) => {
+    let healthData: any;
+    try { healthData = JSON.parse(raw); } catch { setError('データの読み込みに失敗しました'); return; }
+    setLoading(true);
+    setError(null);
+    fetch(`${API_BASE}/api/analyze-nutrition`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ healthData }),
+    })
+      .then(r => r.json())
+      .then(result => {
+        if (result.success) {
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify(result.data));
+          setFoodData(toFoodItems(result.data));
+          setSummary(result.data.summary);
+        } else {
+          setError(result.error || '解析に失敗しました');
+        }
+      })
+      .catch(err => setError('通信エラー: ' + (err instanceof Error ? err.message : String(err))))
+      .finally(() => setLoading(false));
+  };
+
+  const reanalyze = () => {
+    const raw = localStorage.getItem('healthCheckData');
+    if (!raw) return;
+    sessionStorage.removeItem(SESSION_KEY);
+    setFoodData([]);
+    setSummary('');
+    runAnalysis(raw);
+  };
+
   useEffect(() => {
     const raw = localStorage.getItem('healthCheckData');
     if (!raw) {
@@ -83,28 +116,7 @@ export default function Analysis() {
       } catch {}
     }
 
-    // API呼び出し
-    let healthData: any;
-    try { healthData = JSON.parse(raw); } catch { setError('データの読み込みに失敗しました'); return; }
-
-    setLoading(true);
-    fetch(`${API_BASE}/api/analyze-nutrition`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ healthData }),
-    })
-      .then(r => r.json())
-      .then(result => {
-        if (result.success) {
-          sessionStorage.setItem(SESSION_KEY, JSON.stringify(result.data));
-          setFoodData(toFoodItems(result.data));
-          setSummary(result.data.summary);
-        } else {
-          setError(result.error || '解析に失敗しました');
-        }
-      })
-      .catch(err => setError('通信エラー: ' + (err instanceof Error ? err.message : String(err))))
-      .finally(() => setLoading(false));
+    runAnalysis(raw);
   }, []);
 
   const filtered = foodData.filter((f) => {
@@ -125,18 +137,30 @@ export default function Analysis() {
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-          <p className="stat-label mb-1">Food Compatibility</p>
-          <h1 className="text-2xl lg:text-3xl font-bold">食事解析</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">
-            あなたのバイオデータに基づいた、食材の相性レポートです。
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="stat-label mb-1">Food Analysis</p>
+              <h1 className="text-2xl lg:text-3xl font-bold">食事解析</h1>
+              <p className="text-sm text-muted-foreground mt-1.5">
+                あなたの健康診断データに基づいた、食材推奨レポートです。
+              </p>
+            </div>
+            {foodData.length > 0 && !loading && (
+              <button
+                onClick={reanalyze}
+                className="shrink-0 mt-1 text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-border text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors whitespace-nowrap"
+              >
+                🔄 再解析する
+              </button>
+            )}
+          </div>
         </motion.div>
 
         {/* Disclaimer */}
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.05 }} className="elevated-card rounded-xl p-3.5 mb-6 flex items-start gap-3">
           <Info className="w-4 h-4 text-teal mt-0.5 shrink-0" />
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            以下の提案は、管理栄養士監修のアルゴリズムに基づく<span className="font-medium text-foreground">健康増進・パフォーマンス最適化</span>を目的としたものです。
+            以下の提案は、AIによる解析に基づく<span className="font-medium text-foreground">健康増進・パフォーマンス最適化</span>を目的としたものです。
             医療上の診断・処方ではありません。アレルギーや持病がある場合は、必ず医療機関にご相談ください。
           </p>
         </motion.div>
