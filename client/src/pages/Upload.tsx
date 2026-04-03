@@ -129,7 +129,10 @@ export default function Upload() {
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) analyzeFile(file);
+      if (file) {
+        console.log('File selected:', file.name, file.type, file.size, 'bytes');
+        analyzeFile(file);
+      }
     },
     [analyzeFile]
   );
@@ -147,22 +150,6 @@ export default function Upload() {
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto">
-        {/* ファイル入力（絶対配置で非表示・Safari互換） */}
-        <input
-          id={FILE_INPUT_ID}
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.jpg,.jpeg,.png"
-          onChange={handleFileChange}
-          style={{
-            position: "absolute",
-            width: 1,
-            height: 1,
-            opacity: 0,
-            overflow: "hidden",
-            pointerEvents: "none",
-          }}
-        />
 
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
@@ -227,11 +214,27 @@ export default function Upload() {
           {/* idle */}
           {(uploadState === "idle" || uploadState === "error") && (
             <label
-              htmlFor={FILE_INPUT_ID}
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
-              className="block border border-dashed border-border rounded-xl p-8 text-center hover:border-primary/40 transition-colors cursor-pointer group"
+              className="block border border-dashed border-border rounded-xl p-8 text-center hover:border-primary/40 transition-colors cursor-pointer group relative"
             >
+              {/* input を label 内に配置 - Safari が最も確実にトリガーできる構造 */}
+              <input
+                id={FILE_INPUT_ID}
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleFileChange}
+                style={{
+                  position: "absolute",
+                  width: "1px",
+                  height: "1px",
+                  opacity: 0,
+                  overflow: "hidden",
+                  top: 0,
+                  left: 0,
+                }}
+              />
               <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3 group-hover:bg-primary/10 transition-colors">
                 <UploadIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
               </div>
@@ -239,7 +242,7 @@ export default function Upload() {
                 PDF・画像（jpg/png）をドラッグ＆ドロップ
               </p>
               <p className="text-[10px] text-muted-foreground/60">
-                またはクリックしてファイルを選択
+                またはタップしてファイルを選択
               </p>
               {uploadState === "error" && analysisError && (
                 <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-orange-400">
