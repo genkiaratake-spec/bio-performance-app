@@ -78,6 +78,34 @@ export default function FoodScanner() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const resizeImage = (file: File): Promise<Blob> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const maxSize = 1024;
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          if (width > height) {
+            height = (height / width) * maxSize;
+            width = maxSize;
+          } else {
+            width = (width / height) * maxSize;
+            height = maxSize;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        ctx.drawImage(img, 0, 0, width, height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', 0.85);
+      };
+      img.src = url;
+    });
+  };
+
   const analyzeFood = useCallback(async (file: File) => {
     setAnalysisError(null);
     setAnalysisResult(null);
@@ -86,8 +114,10 @@ export default function FoodScanner() {
     setPhase("scanning");
 
     try {
+      const resizedBlob = await resizeImage(file);
+      const resizedFile = new File([resizedBlob], 'food.jpg', { type: 'image/jpeg' });
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', resizedFile);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
