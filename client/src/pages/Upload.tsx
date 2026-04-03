@@ -126,58 +126,6 @@ export default function Upload() {
           )}
         </motion.div>
 
-        {/* Section 2: 血液検査（グレーアウト） */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
-          className="elevated-card rounded-xl p-5 mb-3"
-          style={{ opacity: 0.5 }}
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-lg shrink-0">🩸</div>
-            <div className="flex-1">
-              <h3 className="text-sm font-bold flex items-center flex-wrap gap-1">
-                血液検査結果
-                {COMING_SOON_BADGE}
-              </h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">SRL・BML・LSIメディエンス等の検査結果</p>
-            </div>
-          </div>
-          <div
-            className="border border-dashed border-border rounded-xl p-8 text-center"
-            style={{ pointerEvents: "none" }}
-          >
-            <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3">
-              <UploadIcon className="w-5 h-5 text-muted-foreground/40" />
-            </div>
-            <p className="text-xs text-muted-foreground/50">近日対応予定</p>
-          </div>
-        </motion.div>
-
-        {/* Section 3: DNA検査（グレーアウト） */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.16 }}
-          className="elevated-card rounded-xl p-5 mb-4"
-          style={{ opacity: 0.5 }}
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 rounded-lg bg-secondary flex items-center justify-center text-lg shrink-0">🧬</div>
-            <div className="flex-1">
-              <h3 className="text-sm font-bold flex items-center flex-wrap gap-1">
-                DNA検査結果
-                {COMING_SOON_BADGE}
-              </h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">ユーグレナ（mycode）・ジェネシスヘルスケア等</p>
-            </div>
-          </div>
-          <div
-            className="border border-dashed border-border rounded-xl p-8 text-center"
-            style={{ pointerEvents: "none" }}
-          >
-            <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3">
-              <UploadIcon className="w-5 h-5 text-muted-foreground/40" />
-            </div>
-            <p className="text-xs text-muted-foreground/50">近日対応予定</p>
-          </div>
-        </motion.div>
-
         {/* 対応フォーマット */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="elevated-card rounded-xl p-5 mb-4">
           <h3 className="text-xs font-bold mb-3">対応フォーマット</h3>

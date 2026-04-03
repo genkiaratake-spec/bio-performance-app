@@ -65,7 +65,7 @@ export default function Supplements() {
   };
 
   return (
-    <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24">
+    <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
       <div className="mb-6">
         <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">SUPPLEMENT OPTIMIZATION</p>
         <h1 className="text-2xl font-bold text-white mb-2">サプリメント最適化</h1>
