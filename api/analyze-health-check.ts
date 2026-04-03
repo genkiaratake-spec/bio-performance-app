@@ -12,7 +12,10 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 function parseForm(req: VercelRequest): Promise<{ buffer: Buffer; mimeType: string }> {
   return new Promise((resolve, reject) => {
-    const bb = busboy({ headers: req.headers });
+    const bb = busboy({
+      headers: req.headers,
+      limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+    });
     let fileBuffer: Buffer | null = null;
     let mimeType = 'application/pdf';
 
@@ -41,14 +44,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { buffer, mimeType } = await parseForm(req);
     const base64Data = buffer.toString('base64');
-    const isImage = mimeType.startsWith('image/');
+
+    // MIMEタイプの正規化
+    // iPhoneのSafariはPDFをoctet-streamで送ることがある
+    let normalizedMimeType = mimeType;
+    if (
+      mimeType === 'application/octet-stream' ||
+      mimeType === 'application/x-pdf' ||
+      mimeType === '' ||
+      !mimeType
+    ) {
+      normalizedMimeType = 'application/pdf';
+    }
+
+    const isImage = normalizedMimeType.startsWith('image/');
 
     const contentItem = isImage
       ? {
           type: 'image' as const,
           source: {
             type: 'base64' as const,
-            media_type: mimeType as 'image/jpeg' | 'image/png',
+            media_type: normalizedMimeType as 'image/jpeg' | 'image/png',
             data: base64Data,
           },
         }
