@@ -213,6 +213,7 @@ export default function FoodScanner() {
                 className="elevated-card rounded-2xl border border-dashed border-border hover:border-primary/30 transition-all cursor-pointer p-12 lg:p-20 flex flex-col items-center justify-center gap-6 group relative block"
               >
                 <input
+                  id="food-camera-input"
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
