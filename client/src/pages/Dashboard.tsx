@@ -1,6 +1,6 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { motion } from "framer-motion";
-import { Activity, Droplets, Dna, TrendingUp, UtensilsCrossed, Pill, ArrowUpRight, AlertCircle, ScanLine, Flame, Beef, Wheat } from "lucide-react";
+import { Activity, Droplets, Dna, TrendingUp, BookOpen, Pill, ArrowUpRight, AlertCircle, ScanLine, Flame, Beef, Wheat } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -302,7 +302,7 @@ export default function Dashboard() {
             <div className="space-y-2">
               {[
                 { href: "/food-scanner", icon: ScanLine, label: "フードスキャナー", desc: "食事を撮影", color: "text-amber" },
-                { href: "/meal-plan", icon: UtensilsCrossed, label: "ミールプラン", desc: "今週のメニュー", color: "text-teal" },
+                { href: "/food-log", icon: BookOpen, label: "食事ログ", desc: "食事の記録を見る", color: "text-teal" },
                 { href: "/supplements", icon: Pill, label: "サプリメント", desc: "不足栄養素を補う", color: "text-amber" },
               ].map((action) => (
                 <Link key={action.href} href={action.href}>

@@ -6,3 +6,5 @@ android/local.properties
 .DS_Store
 dist/
 .manus-logs/
+
+.vercel

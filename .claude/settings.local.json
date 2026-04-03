@@ -27,7 +27,19 @@
       "Bash(cp -r /tmp/bio-zip/shared \"/c/Users/genki/OneDrive/bio-performance-app/\")",
       "Bash(cp -r /tmp/bio-zip/patches \"/c/Users/genki/OneDrive/bio-performance-app/\")",
       "Bash(cp /tmp/bio-zip/tsconfig.json \"/c/Users/genki/OneDrive/bio-performance-app/\")",
-      "Bash(cp /tmp/bio-zip/tsconfig.node.json \"/c/Users/genki/OneDrive/bio-performance-app/\")"
+      "Bash(cp /tmp/bio-zip/tsconfig.node.json \"/c/Users/genki/OneDrive/bio-performance-app/\")",
+      "Bash(where vercel:*)",
+      "Bash(npx vercel:*)",
+      "Bash(grep -A5 '\"\"scripts\"\"' package.json)",
+      "Bash(find . -name *.js -path */build/*)",
+      "Bash(npm run:*)",
+      "Bash(./node_modules/.bin/vite build:*)",
+      "Bash(xargs head:*)",
+      "Bash(xargs cat:*)",
+      "Bash(where codemagic:*)",
+      "Bash(curl --version)",
+      "Bash(claude config:*)",
+      "Bash(vercel --prod --yes)"
     ]
   }
 }

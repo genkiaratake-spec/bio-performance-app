@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { LayoutDashboard, Upload, FlaskConical, UtensilsCrossed, Pill, Menu, X, ScanLine, BarChart3 } from "lucide-react";
+import { LayoutDashboard, Upload, FlaskConical, Pill, Menu, X, ScanLine, BarChart3, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -8,7 +8,7 @@ const navItems = [
   { path: "/food-scanner", label: "フードスキャナー", icon: ScanLine },
   { path: "/upload", label: "データ連携", icon: Upload },
   { path: "/analysis", label: "食事解析", icon: BarChart3 },
-  { path: "/meal-plan", label: "ミールプラン", icon: UtensilsCrossed },
+  { path: "/food-log", label: "食事ログ", icon: BookOpen },
   { path: "/supplements", label: "サプリメント", icon: Pill },
 ];
 
