@@ -54,14 +54,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           },
           {
             type: 'text',
-            text: `この食事の写真を分析して、以下のJSON形式のみで返答してください。前後の説明文は不要です。
+            text: `この食事の写真を詳しく分析してください。
+日本食・アジア料理・西洋料理を含む世界各地の料理に精通しており、
+日本のコンビニ食・定食・弁当・ファストフード・家庭料理についても
+正確にカロリーと栄養素を推定できます。
+
+以下のJSON形式のみで返答してください。前後の説明文は不要です。
 
 {
-  "mealName": "料理名（日本語）",
+  "mealName": "料理名（日本語・具体的に例：豚骨ラーメン、チキンカレー定食）",
   "items": [
     {
-      "name": "食材・料理名",
-      "amount": "量（例：1杯、150g）",
+      "name": "食材・料理名（日本語）",
+      "amount": "量（例：1杯、150g、1個）",
       "calories": カロリー数値(kcal),
       "protein": タンパク質g数値,
       "fat": 脂質g数値,
@@ -72,10 +77,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   "totalProtein": 合計タンパク質g数値,
   "totalFat": 合計脂質g数値,
   "totalCarbs": 合計炭水化物g数値,
-  "healthScore": 健康スコア1-100の数値,
-  "advice": "この食事に対する栄養アドバイス（日本語・2文程度）",
-  "confidence": "high/medium/low"
-}`
+  "healthScore": 健康スコア1-100の数値（野菜多め・バランス良い=高スコア、揚げ物・糖質多め=低スコア）,
+  "advice": "この食事に対する具体的な栄養アドバイス（日本語・2文程度・改善点や良い点を含む）",
+  "confidence": "high/medium/low（画像から食事を明確に識別できた場合high）"
+}
+
+画像が不鮮明・食事が写っていない場合のみ、
+mealName を「認識不可」にしてください。`
           }
         ]
       }]
