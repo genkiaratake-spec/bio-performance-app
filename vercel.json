@@ -10,6 +10,9 @@
     "api/analyze-health-check.ts": {
       "maxDuration": 60,
       "memory": 1024
+    },
+    "api/analyze-food.ts": {
+      "maxDuration": 30
     }
   }
 }
