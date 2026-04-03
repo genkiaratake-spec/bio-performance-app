@@ -12,6 +12,7 @@ import Analysis from "./pages/Analysis";
 import MealPlan from "./pages/MealPlan";
 import Supplements from "./pages/Supplements";
 import FoodScanner from "./pages/FoodScanner";
+import Onboarding from "./pages/Onboarding";
 
 const BOTTOM_NAV_ROUTES = ["/", "/analysis", "/upload", "/supplements"];
 
@@ -27,9 +28,22 @@ function Layout({ children }: { children: React.ReactNode }) {
 }
 
 function Router() {
+  const [location, navigate] = useLocation();
+
+  // 初回起動チェック：オンボーディング未完了なら /onboarding へ
+  if (
+    typeof window !== 'undefined' &&
+    localStorage.getItem('onboardingComplete') !== 'true' &&
+    location !== '/onboarding'
+  ) {
+    navigate('/onboarding');
+    return null;
+  }
+
   return (
     <Layout>
       <Switch>
+        <Route path="/onboarding" component={Onboarding} />
         <Route path="/" component={Home} />
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/upload" component={Upload} />
