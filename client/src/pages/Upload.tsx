@@ -74,7 +74,12 @@ export default function Upload() {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 55000);
 
-      const response = await fetch('/api/analyze-health-check', {
+      const API_BASE = typeof window !== 'undefined' &&
+        window.location.protocol === 'capacitor:'
+          ? 'https://bio-performance-app.vercel.app'
+          : '';
+
+      const response = await fetch(`${API_BASE}/api/analyze-health-check`, {
         method: 'POST',
         body: formData,
         signal: controller.signal,
