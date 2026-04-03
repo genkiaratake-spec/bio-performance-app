@@ -51,6 +51,7 @@ function MetricCard({
 
 export default function Upload() {
   const [uploadState, setUploadState] = useState<UploadState>("idle");
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [fileName, setFileName] = useState("");
   const [analysisResult, setAnalysisResult] = useState<HealthCheckData | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
@@ -58,39 +59,51 @@ export default function Upload() {
 
   const analyzeFile = useCallback(async (file: File) => {
     setFileName(file.name);
-    setUploadState("uploading");
+    setIsAnalyzing(true);
     setAnalysisError(null);
     setAnalysisResult(null);
-
-    // 短いディレイでUIをuploadingに見せてからanalyzing へ
-    await new Promise((r) => setTimeout(r, 800));
     setUploadState("analyzing");
 
     try {
+      console.log('Uploading file:', file.name, file.type, file.size);
+
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append('file', file);
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 55000);
 
-      const response = await fetch("/api/analyze-health-check", {
-        method: "POST",
+      const response = await fetch('/api/analyze-health-check', {
+        method: 'POST',
         body: formData,
         signal: controller.signal,
       });
       clearTimeout(timeoutId);
 
-      const result = await response.json();
+      console.log('Response status:', response.status);
+
+      const text = await response.text();
+      console.log('Response text:', text.substring(0, 500));
+
+      let result;
+      try {
+        result = JSON.parse(text);
+      } catch {
+        setAnalysisError('レスポンスの解析に失敗しました: ' + text.substring(0, 100));
+        setUploadState('error');
+        return;
+      }
 
       if (result.success) {
         setAnalysisResult(result.data);
-        localStorage.setItem("healthCheckData", JSON.stringify(result.data));
-        setUploadState("complete");
+        localStorage.setItem('healthCheckData', JSON.stringify(result.data));
+        setUploadState('complete');
       } else {
-        setAnalysisError(result.error || "解析に失敗しました");
-        setUploadState("error");
+        setAnalysisError(result.error || result.detail || '解析に失敗しました');
+        setUploadState('error');
       }
     } catch (err) {
+      console.error('Fetch error:', err);
       if (err instanceof Error && err.name === 'AbortError') {
         setAnalysisError('解析がタイムアウトしました。PDFのサイズを小さくしてお試しください。');
       } else {
@@ -98,6 +111,8 @@ export default function Upload() {
         setAnalysisError('通信エラーが発生しました: ' + detail);
       }
       setUploadState('error');
+    } finally {
+      setIsAnalyzing(false);
     }
   }, []);
 
