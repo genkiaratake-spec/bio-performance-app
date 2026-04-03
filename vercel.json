@@ -13,6 +13,9 @@
     },
     "api/analyze-food.ts": {
       "maxDuration": 30
+    },
+    "api/analyze-nutrition.ts": {
+      "maxDuration": 30
     }
   }
 }

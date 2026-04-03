@@ -6,19 +6,28 @@ export const config = { api: { bodyParser: false } };
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-function parseForm(req: VercelRequest): Promise<{ buffer: Buffer; mimeType: string }> {
+function parseForm(req: VercelRequest): Promise<{ buffer: Buffer; mimeType: string; healthData?: any }> {
   return new Promise((resolve, reject) => {
     const bb = busboy({ headers: req.headers, limits: { fileSize: 20 * 1024 * 1024 } });
     let fileBuffer: Buffer | null = null;
     let mimeType = 'image/jpeg';
+    let healthData: any = undefined;
+
+    bb.on('field', (name, value) => {
+      if (name === 'healthData') {
+        try { healthData = JSON.parse(value); } catch {}
+      }
+    });
+
     bb.on('file', (_field, file, info) => {
       mimeType = info.mimeType || 'image/jpeg';
       const chunks: Buffer[] = [];
       file.on('data', (chunk) => chunks.push(chunk));
       file.on('end', () => { fileBuffer = Buffer.concat(chunks); });
     });
+
     bb.on('finish', () => {
-      if (fileBuffer) resolve({ buffer: fileBuffer, mimeType });
+      if (fileBuffer) resolve({ buffer: fileBuffer, mimeType, healthData });
       else reject(new Error('ファイルが見つかりません'));
     });
     bb.on('error', reject);
@@ -34,13 +43,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { buffer, mimeType } = await parseForm(req);
+    const { buffer, mimeType, healthData } = await parseForm(req);
     const base64Data = buffer.toString('base64');
     const imageMediaType = (
       mimeType === 'image/png' ? 'image/png' :
       mimeType === 'image/gif' ? 'image/gif' :
       mimeType === 'image/webp' ? 'image/webp' : 'image/jpeg'
     ) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+    const healthContext = healthData ? `
+【このユーザーの健康診断データ】
+- LDLコレステロール: ${healthData.ldlCholesterol ?? '不明'} mg/dL（基準値60-119）
+- HDLコレステロール: ${healthData.hdlCholesterol ?? '不明'} mg/dL（基準値40-119）
+- 中性脂肪: ${healthData.triglycerides ?? '不明'} mg/dL（基準値0-149）
+- 血糖値: ${healthData.bloodSugar ?? '不明'} mg/dL（基準値70-99）
+- HbA1c: ${healthData.hba1c ?? '不明'} %（基準値0-5.5）
+- CRP: ${healthData.crp ?? '不明'} mg/dL（基準値0-0.30）
+- フェリチン: ${healthData.ferritin ?? '不明'} ng/mL
+- BMI: ${healthData.bmi ?? '不明'}
+- 総合判定: ${healthData.overallRating ?? '不明'}
+- 異常フラグ: ${healthData.abnormalFlags?.join('、') ?? 'なし'}
+
+このユーザーの健康状態を考慮して healthScore を計算してください：
+- LDLが120以上の場合、脂質の多い食事（揚げ物・肉の脂身・バター）はスコアを大きく下げる
+- 中性脂肪が150以上の場合、糖質・アルコールを含む食事はスコアを下げる
+- CRPが0.30以上の場合、炎症を促進する食事（加工肉・トランス脂肪酸）はスコアを下げる
+- フェリチンが低い場合、鉄分を含む食事はスコアを上げる
+- BMIが25以上の場合、高カロリー食はスコアを下げる
+` : '';
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -54,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           },
           {
             type: 'text',
-            text: `この食事の写真を詳しく分析してください。
+            text: `${healthContext}この食事の写真を詳しく分析してください。
 日本食・アジア料理・西洋料理を含む世界各地の料理に精通しており、
 日本のコンビニ食・定食・弁当・ファストフード・家庭料理についても
 正確にカロリーと栄養素を推定できます。

@@ -131,6 +131,11 @@ export default function FoodScanner() {
         formData.append('file', file);
       }
 
+      const healthCheckData = localStorage.getItem('healthCheckData');
+      if (healthCheckData) {
+        formData.append('healthData', healthCheckData);
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 

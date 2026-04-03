@@ -2,32 +2,33 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { motion } from "framer-motion";
 import { ThumbsUp, ThumbsDown, AlertTriangle, ArrowRight, Info, Search, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-import { useState } from "react";
+import { Link, useLocation } from "wouter";
+import { useState, useEffect } from "react";
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+type Compatibility = "excellent" | "good" | "caution" | "avoid";
 
 type FoodItem = {
   name: string;
   category: string;
-  compatibility: "excellent" | "good" | "caution" | "avoid";
+  compatibility: Compatibility;
   reason: string;
   nutrients: string[];
 };
 
-const foodData: FoodItem[] = [
-  { name: "サーモン", category: "タンパク質", compatibility: "excellent", reason: "オメガ3脂肪酸が豊富。あなたの遺伝子型はオメガ3の代謝効率が高く、炎症マーカー（CRP）の改善に寄与。", nutrients: ["オメガ3", "ビタミンD", "タンパク質"] },
-  { name: "ほうれん草", category: "野菜", compatibility: "excellent", reason: "鉄分・葉酸が豊富。フェリチン値が基準値を下回っているため、鉄分の積極的な摂取を推奨。", nutrients: ["鉄分", "葉酸", "ビタミンK"] },
-  { name: "卵", category: "タンパク質", compatibility: "excellent", reason: "ビタミンD・コリンが豊富。ビタミンD値が低めのため、卵黄からの自然な補給が効果的。", nutrients: ["ビタミンD", "コリン", "タンパク質"] },
-  { name: "レバー（鶏）", category: "タンパク質", compatibility: "excellent", reason: "ヘム鉄の最良の供給源。フェリチン値の改善に最も効率的。", nutrients: ["ヘム鉄", "ビタミンA", "ビタミンB12"] },
-  { name: "アボカド", category: "脂質", compatibility: "good", reason: "良質な一価不飽和脂肪酸。あなたの脂質代謝遺伝子型と相性が良い。", nutrients: ["一価不飽和脂肪酸", "カリウム", "食物繊維"] },
-  { name: "ブルーベリー", category: "果物", compatibility: "good", reason: "抗酸化物質（アントシアニン）が豊富。認知機能のサポートに寄与。", nutrients: ["アントシアニン", "ビタミンC", "食物繊維"] },
-  { name: "玄米", category: "炭水化物", compatibility: "good", reason: "低GI炭水化物。血糖値の安定に寄与し、HbA1c値の維持に効果的。", nutrients: ["食物繊維", "マグネシウム", "ビタミンB1"] },
-  { name: "納豆", category: "発酵食品", compatibility: "good", reason: "ビタミンK2・ナットウキナーゼが豊富。腸内環境の改善に寄与。", nutrients: ["ビタミンK2", "タンパク質", "プロバイオティクス"] },
-  { name: "白砂糖（過剰摂取）", category: "糖質", compatibility: "caution", reason: "急激な血糖値上昇を引き起こす。HbA1c値は正常範囲だが、パフォーマンス維持のため控えめに。", nutrients: [] },
-  { name: "加工肉（ハム・ソーセージ）", category: "加工食品", compatibility: "caution", reason: "亜硝酸塩・添加物を含む。CRP値への影響を考慮し、頻度を抑えることを推奨。", nutrients: [] },
-  { name: "アルコール（過剰摂取）", category: "飲料", compatibility: "avoid", reason: "あなたの遺伝子型（ALDH2）はアルコール代謝効率がやや低い傾向。肝機能への負担を軽減するため、週2回以下を推奨。", nutrients: [] },
-  { name: "トランス脂肪酸", category: "脂質", compatibility: "avoid", reason: "炎症マーカーを悪化させるリスク。マーガリン・ショートニングを含む加工食品を避けることを推奨。", nutrients: [] },
-];
+type NutritionData = {
+  summary: string;
+  optimal: Array<{ name: string; category: string; reason: string; nutrients?: string[] }>;
+  recommended: Array<{ name: string; category: string; reason: string; nutrients?: string[] }>;
+  caution: Array<{ name: string; category: string; reason: string }>;
+  avoid: Array<{ name: string; category: string; reason: string }>;
+};
 
+/* ------------------------------------------------------------------ */
+/*  Config                                                             */
+/* ------------------------------------------------------------------ */
 const compatibilityConfig = {
   excellent: { label: "最適", icon: ThumbsUp, color: "text-teal", bg: "bg-teal/10", border: "border-teal/20", dot: "bg-teal" },
   good: { label: "推奨", icon: ThumbsUp, color: "text-teal", bg: "bg-teal/5", border: "border-teal/10", dot: "bg-teal/60" },
@@ -35,9 +36,76 @@ const compatibilityConfig = {
   avoid: { label: "非推奨", icon: ThumbsDown, color: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/20", dot: "bg-destructive" },
 };
 
+const API_BASE = typeof window !== 'undefined' && window.location.protocol === 'capacitor:'
+  ? 'https://bio-performance-app.vercel.app'
+  : '';
+
+const SESSION_KEY = 'nutritionAnalysisCache';
+
+function toFoodItems(data: NutritionData): FoodItem[] {
+  const items: FoodItem[] = [];
+  for (const f of data.optimal) items.push({ ...f, compatibility: "excellent", nutrients: f.nutrients ?? [] });
+  for (const f of data.recommended) items.push({ ...f, compatibility: "good", nutrients: f.nutrients ?? [] });
+  for (const f of data.caution) items.push({ ...f, compatibility: "caution", nutrients: [] });
+  for (const f of data.avoid) items.push({ ...f, compatibility: "avoid", nutrients: [] });
+  return items;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main component                                                     */
+/* ------------------------------------------------------------------ */
 export default function Analysis() {
-  const [filter, setFilter] = useState<"all" | "excellent" | "good" | "caution" | "avoid">("all");
+  const [, navigate] = useLocation();
+  const [filter, setFilter] = useState<"all" | Compatibility>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [foodData, setFoodData] = useState<FoodItem[]>([]);
+  const [summary, setSummary] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasHealthData, setHasHealthData] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    const raw = localStorage.getItem('healthCheckData');
+    if (!raw) {
+      setHasHealthData(false);
+      return;
+    }
+    setHasHealthData(true);
+
+    // セッションキャッシュがあれば再利用
+    const cached = sessionStorage.getItem(SESSION_KEY);
+    if (cached) {
+      try {
+        const parsed: NutritionData = JSON.parse(cached);
+        setFoodData(toFoodItems(parsed));
+        setSummary(parsed.summary);
+        return;
+      } catch {}
+    }
+
+    // API呼び出し
+    let healthData: any;
+    try { healthData = JSON.parse(raw); } catch { setError('データの読み込みに失敗しました'); return; }
+
+    setLoading(true);
+    fetch(`${API_BASE}/api/analyze-nutrition`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ healthData }),
+    })
+      .then(r => r.json())
+      .then(result => {
+        if (result.success) {
+          sessionStorage.setItem(SESSION_KEY, JSON.stringify(result.data));
+          setFoodData(toFoodItems(result.data));
+          setSummary(result.data.summary);
+        } else {
+          setError(result.error || '解析に失敗しました');
+        }
+      })
+      .catch(err => setError('通信エラー: ' + (err instanceof Error ? err.message : String(err))))
+      .finally(() => setLoading(false));
+  }, []);
 
   const filtered = foodData.filter((f) => {
     const matchFilter = filter === "all" || f.compatibility === filter;
@@ -73,89 +141,136 @@ export default function Analysis() {
           </p>
         </motion.div>
 
-        {/* Summary cards */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-          {(["excellent", "good", "caution", "avoid"] as const).map((key) => {
-            const c = compatibilityConfig[key];
-            return (
-              <button
-                key={key}
-                onClick={() => setFilter(filter === key ? "all" : key)}
-                className={`elevated-card rounded-xl p-4 text-left transition-all ${filter === key ? "ring-1 ring-primary/40" : ""}`}
-              >
-                <div className="flex items-center gap-2 mb-2">
-                  <div className={`w-2 h-2 rounded-full ${c.dot}`} />
-                  <span className={`text-xs font-semibold ${c.color}`}>{c.label}</span>
-                </div>
-                <span className="stat-value text-xl">{counts[key]}</span>
-                <span className="stat-unit ml-1">食材</span>
-              </button>
-            );
-          })}
-        </motion.div>
-
-        {/* Search */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }} className="mb-6">
-          <div className="relative">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="食材を検索..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-primary text-foreground placeholder:text-muted-foreground"
-            />
-          </div>
-        </motion.div>
-
-        {/* Food list */}
-        <div className="space-y-2 mb-8">
-          {filtered.map((food, i) => {
-            const config = compatibilityConfig[food.compatibility];
-            const Icon = config.icon;
-            return (
-              <motion.div
-                key={food.name}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: 0.15 + i * 0.03 }}
-                className="elevated-card rounded-xl p-4 group"
-              >
-                <div className="flex items-start gap-4">
-                  <div className={`w-9 h-9 rounded-lg ${config.bg} flex items-center justify-center shrink-0 mt-0.5`}>
-                    <Icon className={`w-4 h-4 ${config.color}`} />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h3 className="text-sm font-bold">{food.name}</h3>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${config.bg} ${config.color}`}>{config.label}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-medium">{food.category}</span>
-                    </div>
-                    <p className="text-[13px] text-muted-foreground leading-relaxed mb-2">{food.reason}</p>
-                    {food.nutrients.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5">
-                        {food.nutrients.map((n) => (
-                          <span key={n} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/5 text-primary/80 font-medium">{n}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <ChevronRight className="w-4 h-4 text-muted-foreground/20 mt-1 shrink-0 group-hover:text-primary/40 transition-colors" />
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-
-        {/* CTA */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-center">
-          <Link href="/meal-plan">
-            <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold px-10 h-11">
-              この解析を基にミールプランを見る
+        {/* ── 健康診断データなし ── */}
+        {hasHealthData === false && (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="elevated-card rounded-2xl p-10 flex flex-col items-center text-center">
+            <div className="text-5xl mb-4">📋</div>
+            <h2 className="text-xl font-bold mb-2">健康診断データが未登録です</h2>
+            <p className="text-sm text-muted-foreground mb-6 max-w-sm leading-relaxed">
+              健康診断・人間ドックの結果をアップロードすると、
+              あなたの数値に基づいた食材推奨が表示されます。
+            </p>
+            <Button onClick={() => navigate('/upload')} className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 h-11 px-8">
+              健康診断をアップロード
               <ArrowRight className="w-4 h-4" />
             </Button>
-          </Link>
-        </motion.div>
+          </motion.div>
+        )}
+
+        {/* ── ローディング ── */}
+        {loading && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="elevated-card rounded-2xl p-12 flex flex-col items-center gap-4">
+            <div className="relative w-12 h-12">
+              <div className="w-12 h-12 border-4 border-primary/20 rounded-full" />
+              <div className="absolute inset-0 w-12 h-12 border-4 border-transparent border-t-primary rounded-full animate-spin" />
+            </div>
+            <p className="text-sm text-muted-foreground">健康診断データを解析中...</p>
+          </motion.div>
+        )}
+
+        {/* ── エラー ── */}
+        {error && !loading && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="elevated-card rounded-xl p-4 mb-5 flex items-center gap-3 border border-destructive/20">
+            <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
+            <p className="text-sm text-destructive">{error}</p>
+          </motion.div>
+        )}
+
+        {/* ── データあり ── */}
+        {!loading && foodData.length > 0 && (
+          <>
+            {/* Summary */}
+            {summary && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="elevated-card rounded-xl p-4 mb-5 border border-teal/20 bg-teal/5">
+                <p className="text-sm text-foreground leading-relaxed">{summary}</p>
+              </motion.div>
+            )}
+
+            {/* Summary cards */}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+              {(["excellent", "good", "caution", "avoid"] as const).map((key) => {
+                const c = compatibilityConfig[key];
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setFilter(filter === key ? "all" : key)}
+                    className={`elevated-card rounded-xl p-4 text-left transition-all ${filter === key ? "ring-1 ring-primary/40" : ""}`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className={`w-2 h-2 rounded-full ${c.dot}`} />
+                      <span className={`text-xs font-semibold ${c.color}`}>{c.label}</span>
+                    </div>
+                    <span className="stat-value text-xl">{counts[key]}</span>
+                    <span className="stat-unit ml-1">食材</span>
+                  </button>
+                );
+              })}
+            </motion.div>
+
+            {/* Search */}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }} className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="食材を検索..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-xl text-sm focus:outline-none focus:ring-1 focus:ring-primary text-foreground placeholder:text-muted-foreground"
+                />
+              </div>
+            </motion.div>
+
+            {/* Food list */}
+            <div className="space-y-2 mb-8">
+              {filtered.map((food, i) => {
+                const config = compatibilityConfig[food.compatibility];
+                const Icon = config.icon;
+                return (
+                  <motion.div
+                    key={food.name + i}
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.15 + i * 0.03 }}
+                    className="elevated-card rounded-xl p-4 group"
+                  >
+                    <div className="flex items-start gap-4">
+                      <div className={`w-9 h-9 rounded-lg ${config.bg} flex items-center justify-center shrink-0 mt-0.5`}>
+                        <Icon className={`w-4 h-4 ${config.color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <h3 className="text-sm font-bold">{food.name}</h3>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${config.bg} ${config.color}`}>{config.label}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-secondary text-muted-foreground font-medium">{food.category}</span>
+                        </div>
+                        <p className="text-[13px] text-muted-foreground leading-relaxed mb-2">{food.reason}</p>
+                        {food.nutrients.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {food.nutrients.map((n) => (
+                              <span key={n} className="text-[10px] px-2 py-0.5 rounded-full bg-primary/5 text-primary/80 font-medium">{n}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-muted-foreground/20 mt-1 shrink-0 group-hover:text-primary/40 transition-colors" />
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* CTA */}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-center">
+              <Link href="/meal-plan">
+                <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold px-10 h-11">
+                  この解析を基にミールプランを見る
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+            </motion.div>
+          </>
+        )}
       </div>
     </DashboardLayout>
   );
