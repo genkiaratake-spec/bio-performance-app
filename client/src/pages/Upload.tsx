@@ -56,6 +56,7 @@ export default function Upload() {
   const [analysisResult, setAnalysisResult] = useState<HealthCheckData | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const FILE_INPUT_ID = "health-check-file-input";
 
   const analyzeFile = useCallback(async (file: File) => {
     setFileName(file.name);
@@ -133,12 +134,6 @@ export default function Upload() {
     [analyzeFile]
   );
 
-  const handleClickZone = () => {
-    if (uploadState === "idle" || uploadState === "error") {
-      fileInputRef.current?.click();
-    }
-  };
-
   const handleReset = () => {
     setUploadState("idle");
     setFileName("");
@@ -152,13 +147,21 @@ export default function Upload() {
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto">
-        {/* 隠しファイル入力 */}
+        {/* ファイル入力（絶対配置で非表示・Safari互換） */}
         <input
+          id={FILE_INPUT_ID}
           ref={fileInputRef}
           type="file"
           accept=".pdf,.jpg,.jpeg,.png"
-          className="hidden"
           onChange={handleFileChange}
+          style={{
+            position: "absolute",
+            width: 1,
+            height: 1,
+            opacity: 0,
+            overflow: "hidden",
+            pointerEvents: "none",
+          }}
         />
 
         {/* Header */}
@@ -223,11 +226,11 @@ export default function Upload() {
 
           {/* idle */}
           {(uploadState === "idle" || uploadState === "error") && (
-            <div
+            <label
+              htmlFor={FILE_INPUT_ID}
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleDrop}
-              onClick={handleClickZone}
-              className="border border-dashed border-border rounded-xl p-8 text-center hover:border-primary/40 transition-colors cursor-pointer group"
+              className="block border border-dashed border-border rounded-xl p-8 text-center hover:border-primary/40 transition-colors cursor-pointer group"
             >
               <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3 group-hover:bg-primary/10 transition-colors">
                 <UploadIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
@@ -244,7 +247,7 @@ export default function Upload() {
                   {analysisError}
                 </div>
               )}
-            </div>
+            </label>
           )}
 
           {/* uploading */}
