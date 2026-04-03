@@ -1,7 +1,6 @@
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { Camera, Plus, Clock, ExternalLink } from "lucide-react";
-import { recommendCrispMenu } from "../constants/crispMenu";
+import { Camera, Plus, Clock } from "lucide-react";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 const now = new Date();
@@ -100,9 +99,6 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 // ── main ─────────────────────────────────────────────────────────────────────
 export default function Home() {
-  const healthCheckData = JSON.parse(localStorage.getItem('healthCheckData') || 'null');
-  const userProfile = JSON.parse(localStorage.getItem('userProfile') || 'null');
-  const crispRecommendations = recommendCrispMenu(healthCheckData, userProfile);
 
   return (
     <div style={{ height: "100vh", overflowY: "auto", WebkitOverflowScrolling: "touch", background: "#0a0a0f", color: "#fff", paddingBottom: 100 }}>
@@ -296,68 +292,6 @@ export default function Home() {
             </div>
           </Card>
         </motion.div>
-        {/* ── Crisp Recommendations ── */}
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.28 }}>
-          <Card>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <SectionLabel>今日のおすすめランチ</SectionLabel>
-              <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600 }}>Crisp Salad Works</span>
-            </div>
-            {!healthCheckData && (
-              <p style={{ fontSize: 11, color: "#555", marginBottom: 10 }}>
-                健康診断データをアップロードするとあなた専用の推奨に変わります
-              </p>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {crispRecommendations.map(({ menu, score, reason }, i) => (
-                <a
-                  key={menu.name}
-                  href={menu.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ textDecoration: "none" }}
-                >
-                  <div style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    background: i === 0 ? "#4ade8010" : "#0e0e15",
-                    border: `1px solid ${i === 0 ? "#4ade8030" : "#1e1e28"}`,
-                    borderRadius: 12, padding: "10px 12px",
-                    cursor: "pointer",
-                  }}>
-                    {/* Rank */}
-                    <div style={{
-                      width: 26, height: 26, borderRadius: "50%",
-                      background: i === 0 ? "#4ade80" : i === 1 ? "#4ade8040" : "#1a1a28",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 12, fontWeight: 700,
-                      color: i === 0 ? "#000" : "#4ade80",
-                      flexShrink: 0,
-                    }}>
-                      {i + 1}
-                    </div>
-
-                    {/* Info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2 }}>
-                        {menu.name}
-                      </p>
-                      <p style={{ fontSize: 10, color: "#4ade80", marginBottom: 3 }}>{reason}</p>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <span style={{ fontSize: 10, color: "#666" }}>{menu.calories} kcal</span>
-                        <span style={{ fontSize: 10, color: "#666" }}>P {menu.protein}g</span>
-                        <span style={{ fontSize: 10, color: "#666" }}>F {menu.fat}g</span>
-                        <span style={{ fontSize: 10, color: "#666" }}>C {menu.carbs}g</span>
-                      </div>
-                    </div>
-
-                    <ExternalLink style={{ width: 13, height: 13, color: "#444", flexShrink: 0 }} />
-                  </div>
-                </a>
-              ))}
-            </div>
-          </Card>
-        </motion.div>
-
       </div>
 
       {/* ── Camera FAB ── */}
