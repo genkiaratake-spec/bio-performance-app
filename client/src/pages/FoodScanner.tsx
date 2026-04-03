@@ -114,10 +114,23 @@ export default function FoodScanner() {
     setPhase("scanning");
 
     try {
-      const resizedBlob = await resizeImage(file);
-      const resizedFile = new File([resizedBlob], 'food.jpg', { type: 'image/jpeg' });
       const formData = new FormData();
-      formData.append('file', resizedFile);
+
+      // 2MB以上の場合のみリサイズ（失敗時は元ファイルを使用）
+      if (file.size > 2 * 1024 * 1024) {
+        try {
+          const resizedBlob = await resizeImage(file);
+          const resizedFile = new File([resizedBlob], 'food.jpg', { type: 'image/jpeg' });
+          console.log('Resized:', file.size, '->', resizedFile.size);
+          formData.append('file', resizedFile);
+        } catch (resizeErr) {
+          console.warn('Resize failed, using original:', resizeErr);
+          formData.append('file', file);
+        }
+      } else {
+        formData.append('file', file);
+      }
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 30000);
 
@@ -129,9 +142,10 @@ export default function FoodScanner() {
       clearTimeout(timeoutId);
 
       const text = await response.text();
+      console.log('Response:', response.status, text.substring(0, 200));
       let result;
       try { result = JSON.parse(text); } catch {
-        setAnalysisError('レスポンスの解析に失敗しました');
+        setAnalysisError('レスポンスの解析に失敗しました: ' + text.substring(0, 100));
         setPhase("idle");
         return;
       }
@@ -140,14 +154,16 @@ export default function FoodScanner() {
         setAnalysisResult(result.data);
         setPhase("result");
       } else {
-        setAnalysisError(result.error || '解析に失敗しました');
+        setAnalysisError(result.error || result.detail || '解析に失敗しました');
         setPhase("idle");
       }
     } catch (err) {
+      console.error('analyzeFood error:', err);
       if (err instanceof Error && err.name === 'AbortError') {
         setAnalysisError('解析がタイムアウトしました');
       } else {
-        setAnalysisError('通信エラーが発生しました');
+        const detail = err instanceof Error ? err.message : String(err);
+        setAnalysisError('通信エラーが発生しました: ' + detail);
       }
       setPhase("idle");
     }
