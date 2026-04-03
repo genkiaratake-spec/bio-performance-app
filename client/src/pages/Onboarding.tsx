@@ -330,7 +330,7 @@ export default function Onboarding() {
         <p className="text-green-400 text-xs font-semibold mb-2">あなたの目標</p>
         <h2 className="text-xl font-bold text-white mb-6">最も近い目標を選んでください</h2>
         <div className="space-y-3">
-          <ChoiceCard icon="💪" title="筋肉増強・\nパフォーマンス向上" sub="トレーニング効果を最大化する食事"
+          <ChoiceCard icon="💪" title="筋肉増強・パフォーマンス向上" sub="トレーニング効果を最大化する食事"
             selected={data.goal === 'muscle'} onClick={() => set('goal', 'muscle')} />
           <ChoiceCard icon="🥗" title="栄養バランスを整えたい" sub="不足している栄養素を効率よく補う"
             selected={data.goal === 'nutrition'} onClick={() => set('goal', 'nutrition')} />
