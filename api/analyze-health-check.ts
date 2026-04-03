@@ -1,36 +1,59 @@
 import Anthropic from '@anthropic-ai/sdk';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const rawBody = Buffer.concat(chunks);
 
-    if (!file) {
-      return new Response(JSON.stringify({ error: 'ファイルが必要です' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const contentType = req.headers['content-type'] || '';
+    const boundaryMatch = contentType.match(/boundary=(.+)/);
+    if (!boundaryMatch) {
+      return res.status(400).json({ error: 'Invalid content type' });
+    }
+    const boundary = boundaryMatch[1];
+
+    const bodyStr = rawBody.toString('binary');
+    const parts = bodyStr.split('--' + boundary);
+
+    let fileData: Buffer | null = null;
+    let fileType = 'application/pdf';
+
+    for (const part of parts) {
+      if (part.includes('Content-Disposition: form-data') && part.includes('name="file"')) {
+        const contentTypeMatch = part.match(/Content-Type: ([^\r\n]+)/);
+        if (contentTypeMatch) fileType = contentTypeMatch[1].trim();
+        const headerEnd = part.indexOf('\r\n\r\n');
+        if (headerEnd !== -1) {
+          const fileContent = part.substring(headerEnd + 4);
+          const cleanContent = fileContent.replace(/\r\n$/, '').replace(/--$/, '');
+          fileData = Buffer.from(cleanContent, 'binary');
+        }
+      }
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    const base64Data = Buffer.from(arrayBuffer).toString('base64');
-    const isImage = file.type.startsWith('image/');
-    const mediaType = isImage
-      ? (file.type as 'image/jpeg' | 'image/png')
-      : 'application/pdf';
+    if (!fileData) {
+      return res.status(400).json({ error: 'ファイルが見つかりません' });
+    }
+
+    const base64Data = fileData.toString('base64');
+    const isImage = fileType.startsWith('image/');
 
     const contentItem = isImage
       ? {
           type: 'image' as const,
           source: {
             type: 'base64' as const,
-            media_type: mediaType as 'image/jpeg' | 'image/png',
+            media_type: fileType as 'image/jpeg' | 'image/png',
             data: base64Data,
           },
         }
@@ -95,23 +118,13 @@ export default async function handler(req: Request): Promise<Response> {
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
 
     if (!jsonMatch) {
-      return new Response(
-        JSON.stringify({ error: '解析結果の取得に失敗しました' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
+      return res.status(500).json({ error: '解析結果の取得に失敗しました' });
     }
 
     const healthData = JSON.parse(jsonMatch[0]);
-
-    return new Response(JSON.stringify({ success: true, data: healthData }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return res.status(200).json({ success: true, data: healthData });
   } catch (error) {
     console.error('Health check analysis error:', error);
-    return new Response(
-      JSON.stringify({ error: '解析中にエラーが発生しました' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    return res.status(500).json({ error: '解析中にエラーが発生しました: ' + String(error) });
   }
 }
