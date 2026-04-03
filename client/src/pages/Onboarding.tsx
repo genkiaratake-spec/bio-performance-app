@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useLocation } from 'wouter';
 
 interface OnboardingData {
@@ -111,6 +111,9 @@ function NumberInput({ label, unit, value, onChange, placeholder }: {
 export default function Onboarding() {
   const [, navigate] = useLocation();
   const [step, setStep] = useState(1);
+  const [uploadState, setUploadState] = useState<'idle' | 'analyzing' | 'success' | 'error'>('idle');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [data, setData] = useState<OnboardingData>({
     goal: '', gender: '', birthYear: '', height: '', weight: '', targetWeight: '',
     activityLevel: '', mealsPerDay: '', sleepHours: '',
@@ -135,6 +138,47 @@ export default function Onboarding() {
   const applyCalc = () => {
     const { cal, protein, fat, carbs } = calcNutrition(data);
     setData(d => ({ ...d, dailyCalories: String(cal), dailyProtein: String(protein), dailyFat: String(fat), dailyCarbs: String(carbs) }));
+  };
+
+  const analyzeHealthCheck = async (file: File) => {
+    setUploadState('analyzing');
+    setUploadError(null);
+    try {
+      const API_BASE = typeof window !== 'undefined' && window.location.protocol === 'capacitor:'
+        ? 'https://bio-performance-app.vercel.app' : '';
+      const formData = new FormData();
+      formData.append('file', file);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 55000);
+      const response = await fetch(`${API_BASE}/api/analyze-health-check`, {
+        method: 'POST', body: formData, signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const text = await response.text();
+      let result;
+      try { result = JSON.parse(text); } catch {
+        setUploadState('error');
+        setUploadError('解析に失敗しました');
+        return;
+      }
+      if (result.success) {
+        localStorage.setItem('healthCheckData', JSON.stringify(result.data));
+        setUploadState('success');
+        setTimeout(() => next(), 2000);
+      } else {
+        setUploadState('error');
+        setUploadError(result.error || '解析に失敗しました');
+      }
+    } catch (err) {
+      setUploadState('error');
+      setUploadError(err instanceof Error && err.name === 'AbortError'
+        ? 'タイムアウトしました。再度お試しください' : '通信エラーが発生しました');
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) analyzeHealthCheck(file);
   };
 
   /* ---------- Layout ---------- */
@@ -536,21 +580,82 @@ export default function Onboarding() {
     </Layout>
   );
 
-  /* -- 20: 健康診断アップロード案内 -- */
+  /* -- 20: 健康診断アップロード（インライン） -- */
   if (step === 20) return (
-    <Layout nextLabel="あとでアップロードする" onSkip={next}>
-      <div className="pt-6 text-center">
-        <div className="text-5xl mb-4">📋</div>
-        <h2 className="text-xl font-bold text-white mb-3">健康診断結果をアップロード</h2>
-        <p className="text-gray-400 text-sm leading-relaxed mb-6">
-          PDF・画像形式に対応しています。<br />AIが自動で数値を読み取ります。
-        </p>
-        <div className="bg-[#111118] border border-dashed border-white/20 rounded-2xl p-6 mb-4">
-          <p className="text-gray-400 text-xs">対応形式：PDF / JPG / PNG</p>
-          <p className="text-gray-500 text-xs mt-1">最大 20MB まで</p>
+    <Layout
+      nextLabel={uploadState === 'success' ? '次へ →' : '今はスキップする'}
+      canNext={true}
+      onNext={next}
+      showBack={true}
+    >
+      <h2 className="text-xl font-bold text-white mt-4 mb-2">健康診断をアップロード</h2>
+      <p className="text-gray-400 text-sm mb-6">PDF・JPG・PNG形式に対応。後からでも登録できます。</p>
+
+      {/* idle */}
+      {uploadState === 'idle' && (
+        <label htmlFor="onboarding-health-input" className="cursor-pointer block">
+          <div className="border-2 border-dashed border-white/20 rounded-2xl p-8 text-center hover:border-green-500/50 transition-all">
+            <div className="text-4xl mb-3">📤</div>
+            <p className="text-white text-sm font-medium mb-1">タップしてファイルを選択</p>
+            <p className="text-gray-500 text-xs">PDF・JPG・PNG</p>
+          </div>
+          <input
+            id="onboarding-health-input"
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.jpg,.jpeg,.png"
+            onChange={handleFileChange}
+            style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0, overflow: 'hidden' }}
+          />
+        </label>
+      )}
+
+      {/* analyzing */}
+      {uploadState === 'analyzing' && (
+        <div className="border-2 border-green-500/30 rounded-2xl p-8 text-center bg-green-500/5">
+          <div className="w-10 h-10 border-2 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-white text-sm font-medium">AIが解析中...</p>
+          <p className="text-gray-500 text-xs mt-1">30秒ほどかかる場合があります</p>
         </div>
-        <p className="text-gray-500 text-xs">セットアップ完了後に「アップロード」タブからも登録できます。</p>
-      </div>
+      )}
+
+      {/* success */}
+      {uploadState === 'success' && (
+        <div className="border-2 border-green-500/50 rounded-2xl p-8 text-center bg-green-500/10">
+          <div className="text-4xl mb-3">✅</div>
+          <p className="text-white text-sm font-medium mb-1">解析完了！</p>
+          <p className="text-green-400 text-xs">健康診断データが登録されました</p>
+          <p className="text-gray-500 text-xs mt-2">次のステップへ自動的に進みます...</p>
+        </div>
+      )}
+
+      {/* error */}
+      {uploadState === 'error' && (
+        <div>
+          <div className="border-2 border-red-500/30 rounded-2xl p-6 text-center bg-red-500/5 mb-3">
+            <div className="text-3xl mb-2">⚠️</div>
+            <p className="text-red-400 text-sm">{uploadError}</p>
+          </div>
+          <label htmlFor="onboarding-health-input-retry" className="cursor-pointer block">
+            <div className="border border-white/10 rounded-2xl p-4 text-center hover:border-green-500/30 transition-all">
+              <p className="text-gray-300 text-sm">再度試す</p>
+            </div>
+            <input
+              id="onboarding-health-input-retry"
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              onChange={handleFileChange}
+              style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0, overflow: 'hidden' }}
+            />
+          </label>
+        </div>
+      )}
+
+      {uploadState !== 'analyzing' && uploadState !== 'success' && (
+        <button onClick={next} className="w-full mt-4 py-3 text-gray-500 text-sm">
+          今はスキップする →
+        </button>
+      )}
     </Layout>
   );
 
