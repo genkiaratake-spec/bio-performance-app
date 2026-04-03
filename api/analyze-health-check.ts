@@ -1,7 +1,37 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import busboy from 'busboy';
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+function parseForm(req: VercelRequest): Promise<{ buffer: Buffer; mimeType: string }> {
+  return new Promise((resolve, reject) => {
+    const bb = busboy({ headers: req.headers });
+    let fileBuffer: Buffer | null = null;
+    let mimeType = 'application/pdf';
+
+    bb.on('file', (_field, file, info) => {
+      mimeType = info.mimeType || 'application/pdf';
+      const chunks: Buffer[] = [];
+      file.on('data', (chunk) => chunks.push(chunk));
+      file.on('end', () => { fileBuffer = Buffer.concat(chunks); });
+    });
+
+    bb.on('finish', () => {
+      if (fileBuffer) resolve({ buffer: fileBuffer, mimeType });
+      else reject(new Error('ファイルが見つかりません'));
+    });
+
+    bb.on('error', reject);
+    req.pipe(bb);
+  });
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -9,51 +39,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-    const rawBody = Buffer.concat(chunks);
-
-    const contentType = req.headers['content-type'] || '';
-    const boundaryMatch = contentType.match(/boundary=(.+)/);
-    if (!boundaryMatch) {
-      return res.status(400).json({ error: 'Invalid content type' });
-    }
-    const boundary = boundaryMatch[1];
-
-    const bodyStr = rawBody.toString('binary');
-    const parts = bodyStr.split('--' + boundary);
-
-    let fileData: Buffer | null = null;
-    let fileType = 'application/pdf';
-
-    for (const part of parts) {
-      if (part.includes('Content-Disposition: form-data') && part.includes('name="file"')) {
-        const contentTypeMatch = part.match(/Content-Type: ([^\r\n]+)/);
-        if (contentTypeMatch) fileType = contentTypeMatch[1].trim();
-        const headerEnd = part.indexOf('\r\n\r\n');
-        if (headerEnd !== -1) {
-          const fileContent = part.substring(headerEnd + 4);
-          const cleanContent = fileContent.replace(/\r\n$/, '').replace(/--$/, '');
-          fileData = Buffer.from(cleanContent, 'binary');
-        }
-      }
-    }
-
-    if (!fileData) {
-      return res.status(400).json({ error: 'ファイルが見つかりません' });
-    }
-
-    const base64Data = fileData.toString('base64');
-    const isImage = fileType.startsWith('image/');
+    const { buffer, mimeType } = await parseForm(req);
+    const base64Data = buffer.toString('base64');
+    const isImage = mimeType.startsWith('image/');
 
     const contentItem = isImage
       ? {
           type: 'image' as const,
           source: {
             type: 'base64' as const,
-            media_type: fileType as 'image/jpeg' | 'image/png',
+            media_type: mimeType as 'image/jpeg' | 'image/png',
             data: base64Data,
           },
         }
@@ -69,14 +64,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2000,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            contentItem,
-            {
-              type: 'text',
-              text: `この健康診断結果から以下の項目を抽出してください。
+      messages: [{
+        role: 'user',
+        content: [
+          contentItem,
+          {
+            type: 'text',
+            text: `この健康診断結果から以下の項目を抽出してください。
 項目が存在しない場合はnullにしてください。
 必ずJSON形式のみで返答し、前後の説明文は不要です。
 
@@ -106,23 +100,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   "abnormalFlags": ["基準値外の項目名のリスト"],
   "doctorComment": "医師のコメント（あれば）",
   "overallRating": "総合評価（A/B/C/D等）"
-}`,
-            },
-          ],
-        },
-      ],
+}`
+          }
+        ]
+      }]
     });
 
-    const responseText =
-      message.content[0].type === 'text' ? message.content[0].text : '';
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-
     if (!jsonMatch) {
       return res.status(500).json({ error: '解析結果の取得に失敗しました' });
     }
 
     const healthData = JSON.parse(jsonMatch[0]);
     return res.status(200).json({ success: true, data: healthData });
+
   } catch (error) {
     console.error('Health check analysis error:', error);
     return res.status(500).json({ error: '解析中にエラーが発生しました: ' + String(error) });
