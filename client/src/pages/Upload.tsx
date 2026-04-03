@@ -70,10 +70,15 @@ export default function Upload() {
       const formData = new FormData();
       formData.append("file", file);
 
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 55000);
+
       const response = await fetch("/api/analyze-health-check", {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const result = await response.json();
 
@@ -86,8 +91,12 @@ export default function Upload() {
         setUploadState("error");
       }
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      setAnalysisError('通信エラーが発生しました: ' + detail);
+      if (err instanceof Error && err.name === 'AbortError') {
+        setAnalysisError('解析がタイムアウトしました。PDFのサイズを小さくしてお試しください。');
+      } else {
+        const detail = err instanceof Error ? err.message : String(err);
+        setAnalysisError('通信エラーが発生しました: ' + detail);
+      }
       setUploadState('error');
     }
   }, []);
