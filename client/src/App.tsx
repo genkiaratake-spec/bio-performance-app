@@ -9,12 +9,12 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Upload from "./pages/Upload";
 import Analysis from "./pages/Analysis";
-import MealPlan from "./pages/MealPlan";
+import FoodLog from "./pages/FoodLog";
 import Supplements from "./pages/Supplements";
 import FoodScanner from "./pages/FoodScanner";
 import Onboarding from "./pages/Onboarding";
 
-const BOTTOM_NAV_ROUTES = ["/", "/analysis", "/upload", "/supplements"];
+const BOTTOM_NAV_ROUTES = ["/", "/analysis", "/upload", "/food-log"];
 
 function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -48,7 +48,7 @@ function Router() {
         <Route path="/dashboard" component={Dashboard} />
         <Route path="/upload" component={Upload} />
         <Route path="/analysis" component={Analysis} />
-        <Route path="/meal-plan" component={MealPlan} />
+        <Route path="/food-log" component={FoodLog} />
         <Route path="/supplements" component={Supplements} />
         <Route path="/food-scanner" component={FoodScanner} />
         <Route path="/404" component={NotFound} />

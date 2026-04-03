@@ -262,9 +262,9 @@ export default function Analysis() {
 
             {/* CTA */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-center">
-              <Link href="/meal-plan">
+              <Link href="/food-log">
                 <Button size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold px-10 h-11">
-                  この解析を基にミールプランを見る
+                  食事ログを見る
                   <ArrowRight className="w-4 h-4" />
                 </Button>
               </Link>
