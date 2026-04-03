@@ -207,12 +207,19 @@ export default function FoodScanner() {
           {/* ============================================================ */}
           {phase === "idle" && (
             <motion.div key="idle" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
-              <div
+              <label
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className="elevated-card rounded-2xl border border-dashed border-border hover:border-primary/30 transition-all cursor-pointer p-12 lg:p-20 flex flex-col items-center justify-center gap-6 group"
+                className="elevated-card rounded-2xl border border-dashed border-border hover:border-primary/30 transition-all cursor-pointer p-12 lg:p-20 flex flex-col items-center justify-center gap-6 group relative block"
               >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleInputChange}
+                  style={{ position: "absolute", width: "1px", height: "1px", opacity: 0, overflow: "hidden", top: 0, left: 0 }}
+                />
                 <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/15 transition-colors glow-teal">
                   <ScanLine className="w-10 h-10 text-primary" />
                 </div>
@@ -232,8 +239,7 @@ export default function FoodScanner() {
                     カメラで撮影
                   </Button>
                 </div>
-                <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleInputChange} />
-              </div>
+              </label>
 
               {/* Tips */}
               <div className="grid sm:grid-cols-3 gap-4 mt-6">
