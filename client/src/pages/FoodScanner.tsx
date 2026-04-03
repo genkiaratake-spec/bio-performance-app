@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useRef, useCallback } from "react";
+import { addMealLog } from "../utils/mealLog";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -71,11 +72,23 @@ function ScoreRing({ score }: { score: number }) {
 /* ------------------------------------------------------------------ */
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/*  Meal type guess from current hour                                  */
+/* ------------------------------------------------------------------ */
+function guessMealType(): 'breakfast' | 'lunch' | 'dinner' | 'snack' {
+  const hour = new Date().getHours();
+  if (hour >= 5  && hour < 10) return 'breakfast';
+  if (hour >= 10 && hour < 15) return 'lunch';
+  if (hour >= 15 && hour < 21) return 'dinner';
+  return 'snack';
+}
+
 export default function FoodScanner() {
   const [phase, setPhase] = useState<"idle" | "scanning" | "result">("idle");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<FoodAnalysisResult | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const resizeImage = (file: File): Promise<Blob> => {
@@ -192,16 +205,57 @@ export default function FoodScanner() {
     setAnalysisError(null);
   };
 
-  const saveToLog = () => {
+  const handleSaveMeal = () => {
     if (!analysisResult) return;
-    const logs: Array<FoodAnalysisResult & { date: string }> = JSON.parse(localStorage.getItem('foodLogs') || '[]');
-    logs.push({ ...analysisResult, date: new Date().toISOString() });
-    localStorage.setItem('foodLogs', JSON.stringify(logs));
-    alert('食事ログに保存しました');
+
+    // mealLog (Home.tsx 連携用)
+    addMealLog({
+      mealType: guessMealType(),
+      mealName: analysisResult.mealName,
+      totalCalories: analysisResult.totalCalories,
+      totalProtein: analysisResult.totalProtein,
+      totalFat: analysisResult.totalFat,
+      totalCarbs: analysisResult.totalCarbs,
+      healthScore: analysisResult.healthScore,
+    });
+
+    // foodLogs (FoodLog.tsx 後方互換)
+    const foodLogs: Array<FoodAnalysisResult & { date: string }> =
+      JSON.parse(localStorage.getItem('foodLogs') || '[]');
+    foodLogs.push({ ...analysisResult, date: new Date().toISOString() });
+    localStorage.setItem('foodLogs', JSON.stringify(foodLogs));
+
+    // トーストを表示してリセット
+    setSavedMessage(true);
+    setTimeout(() => {
+      setSavedMessage(false);
+      reset();
+    }, 1500);
   };
 
   return (
     <DashboardLayout>
+      {/* ── 保存完了トースト ── */}
+      <AnimatePresence>
+        {savedMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            style={{
+              position: "fixed", top: 20, left: "50%", transform: "translateX(-50%)",
+              background: "#4ade80", color: "#000",
+              padding: "10px 24px", borderRadius: 999,
+              fontSize: 13, fontWeight: 700, zIndex: 9999,
+              boxShadow: "0 4px 24px #4ade8050",
+              whiteSpace: "nowrap",
+            }}
+          >
+            ✅ 食事を記録しました
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
@@ -399,7 +453,7 @@ export default function FoodScanner() {
                   <Camera className="w-4 h-4" />
                   再撮影する
                 </Button>
-                <Button onClick={saveToLog} className="flex-1 gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-11">
+                <Button onClick={handleSaveMeal} className="flex-1 gap-2 bg-primary text-primary-foreground hover:bg-primary/90 h-11">
                   <Zap className="w-4 h-4" />
                   記録する
                 </Button>
