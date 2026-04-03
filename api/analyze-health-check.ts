@@ -117,6 +117,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error) {
     console.error('Health check analysis error:', error);
-    return res.status(500).json({ error: '解析中にエラーが発生しました: ' + String(error) });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({
+      error: '解析中にエラーが発生しました',
+      detail: errorMessage
+    });
   }
 }

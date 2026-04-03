@@ -85,9 +85,10 @@ export default function Upload() {
         setAnalysisError(result.error || "解析に失敗しました");
         setUploadState("error");
       }
-    } catch {
-      setAnalysisError("通信エラーが発生しました。もう一度お試しください。");
-      setUploadState("error");
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setAnalysisError('通信エラーが発生しました: ' + detail);
+      setUploadState('error');
     }
   }, []);
 
