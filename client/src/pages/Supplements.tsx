@@ -1,130 +1,97 @@
 import DashboardLayout from "@/components/DashboardLayout";
 import { motion } from "framer-motion";
-import { Pill, AlertCircle, CheckCircle2, Info, ShoppingCart, Star, TrendingUp, ArrowRight, ExternalLink } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Info,
+  ShoppingCart,
+  Star,
+  TrendingUp,
+  ArrowRight,
+  ExternalLink,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { SUPPLEMENT_AMAZON_URLS } from "@/const";
-
-type Supplement = {
-  name: string;
-  dosage: string;
-  timing: string;
-  priority: "high" | "medium" | "low";
-  reason: string;
-  biomarker: string;
-  currentValue: string;
-  targetValue: string;
-  monthlyPrice: number;
-};
-
-const supplements: Supplement[] = [
-  {
-    name: "ビタミンD3",
-    dosage: "2,000 IU / 日",
-    timing: "朝食後",
-    priority: "high",
-    reason: "血液検査でビタミンD値が基準値（30 ng/mL）を下回っています。免疫機能・骨密度・テストステロン維持に重要。",
-    biomarker: "ビタミンD",
-    currentValue: "28 ng/mL",
-    targetValue: "40-60 ng/mL",
-    monthlyPrice: 980,
-  },
-  {
-    name: "キレート鉄（ビスグリシン酸鉄）",
-    dosage: "27 mg / 日",
-    timing: "空腹時（ビタミンCと同時摂取推奨）",
-    priority: "high",
-    reason: "フェリチン値が基準値を下回っています。酸素運搬能力・集中力・持久力の維持に直結。キレート型は胃腸への負担が少ない。",
-    biomarker: "フェリチン",
-    currentValue: "45 ng/mL",
-    targetValue: "80-150 ng/mL",
-    monthlyPrice: 1280,
-  },
-  {
-    name: "オメガ3（EPA/DHA）",
-    dosage: "2,000 mg / 日",
-    timing: "食事と一緒に",
-    priority: "medium",
-    reason: "あなたの遺伝子型はオメガ3の代謝効率が高く、抗炎症効果を最大限に活用できます。CRP値の維持・脳機能の最適化に。",
-    biomarker: "CRP",
-    currentValue: "0.3 mg/L",
-    targetValue: "< 0.5 mg/L（維持）",
-    monthlyPrice: 1580,
-  },
-  {
-    name: "マグネシウム（グリシン酸）",
-    dosage: "400 mg / 日",
-    timing: "就寝前",
-    priority: "medium",
-    reason: "睡眠の質の向上・筋弛緩・ストレス軽減に寄与。日本人の約70%がマグネシウム不足と推定されています。",
-    biomarker: "—",
-    currentValue: "未測定",
-    targetValue: "—",
-    monthlyPrice: 1180,
-  },
-  {
-    name: "ビタミンK2（MK-7）",
-    dosage: "100 μg / 日",
-    timing: "ビタミンD3と同時",
-    priority: "low",
-    reason: "ビタミンD3の補給時にK2を併用することで、カルシウムの適切な代謝（骨への沈着）を促進。",
-    biomarker: "—",
-    currentValue: "—",
-    targetValue: "—",
-    monthlyPrice: 780,
-  },
-];
+import { SUPPLEMENTS } from "@/constants/supplements";
 
 const priorityConfig = {
-  high: { label: "高優先", color: "text-amber", bg: "bg-amber/10", dot: "bg-amber", icon: AlertCircle },
-  medium: { label: "中優先", color: "text-teal", bg: "bg-teal/10", dot: "bg-teal", icon: TrendingUp },
-  low: { label: "低優先", color: "text-muted-foreground", bg: "bg-secondary", dot: "bg-muted-foreground/40", icon: CheckCircle2 },
+  high: {
+    label: "高優先",
+    color: "text-amber",
+    bg: "bg-amber/10",
+    dot: "bg-amber",
+    icon: AlertCircle,
+  },
+  medium: {
+    label: "中優先",
+    color: "text-muted-foreground",
+    bg: "bg-secondary",
+    dot: "bg-muted-foreground/40",
+    icon: TrendingUp,
+  },
 };
 
-/* Biomarker mini bar */
-function BiomarkerBar({ current, target }: { current: string; target: string }) {
+function BiomarkerRow({ current, target }: { current: string; target: string }) {
   return (
     <div className="flex items-center gap-2 text-[11px]">
-      <span className="text-amber font-semibold" style={{ fontFamily: "var(--font-mono)" }}>{current}</span>
+      <span className="text-amber font-semibold" style={{ fontFamily: "var(--font-mono)" }}>
+        {current}
+      </span>
       <ArrowRight className="w-3 h-3 text-muted-foreground/40" />
-      <span className="text-teal font-semibold" style={{ fontFamily: "var(--font-mono)" }}>{target}</span>
+      <span className="text-teal font-semibold" style={{ fontFamily: "var(--font-mono)" }}>
+        {target}
+      </span>
     </div>
   );
 }
 
 export default function Supplements() {
-  const totalMonthly = supplements.reduce((sum, s) => sum + s.monthlyPrice, 0);
+  const totalMonthly = SUPPLEMENTS.reduce((sum, s) => sum + s.monthlyPrice, 0);
+  const highCount = SUPPLEMENTS.filter((s) => s.priority === "high").length;
 
-  const handleOpenAllAmazon = () => {
-    supplements.forEach((s) => {
-      const url = SUPPLEMENT_AMAZON_URLS[s.name];
-      if (url) window.open(url, "_blank", "noopener,noreferrer");
+  const handleOpenAll = () => {
+    SUPPLEMENTS.forEach((s) => {
+      window.open(s.amazonUrl, "_blank", "noopener,noreferrer");
     });
   };
 
-  const handleSubscriptionOrder = () => {
-    toast.info("定期便機能は準備中です。しばらくお待ちください。");
+  const handleSubscription = () => {
+    toast.info("定期便機能は現在準備中です");
   };
 
   return (
     <DashboardLayout>
       <div className="max-w-5xl mx-auto">
+
         {/* Header */}
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
           <p className="stat-label mb-1">Supplement Optimization</p>
           <h1 className="text-2xl lg:text-3xl font-bold">サプリメント最適化</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">あなたのバイオデータから特定された、不足栄養素を補うサプリメント提案です。</p>
+          <p className="text-sm text-muted-foreground mt-1.5">
+            あなたのバイオデータから特定された、Life Extension推奨サプリメント提案です。
+          </p>
         </motion.div>
 
         {/* Summary row */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} className="grid grid-cols-3 gap-3 mb-6">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05 }}
+          className="grid grid-cols-3 gap-3 mb-6"
+        >
           <div className="elevated-card rounded-xl p-4 text-center">
-            <span className="stat-label">提案数</span>
-            <p className="stat-value text-2xl mt-1">{supplements.length}<span className="stat-unit ml-1">種類</span></p>
+            <span className="stat-label">推奨数</span>
+            <p className="stat-value text-2xl mt-1">
+              {SUPPLEMENTS.length}
+              <span className="stat-unit ml-1">種類</span>
+            </p>
           </div>
           <div className="elevated-card rounded-xl p-4 text-center">
             <span className="stat-label">高優先</span>
-            <p className="text-2xl font-bold text-amber mt-1" style={{ fontFamily: "var(--font-mono)" }}>{supplements.filter(s => s.priority === "high").length}<span className="stat-unit ml-1">種類</span></p>
+            <p className="text-2xl font-bold text-amber mt-1" style={{ fontFamily: "var(--font-mono)" }}>
+              {highCount}
+              <span className="stat-unit ml-1">種類</span>
+            </p>
           </div>
           <div className="elevated-card rounded-xl p-4 text-center">
             <span className="stat-label">月額目安</span>
@@ -132,36 +99,42 @@ export default function Supplements() {
           </div>
         </motion.div>
 
-        {/* Supplement list */}
+        {/* Supplement cards */}
         <div className="space-y-3 mb-8">
-          {supplements.map((supp, i) => {
+          {SUPPLEMENTS.map((supp, i) => {
             const config = priorityConfig[supp.priority];
+            const Icon = config.icon;
             return (
               <motion.div
                 key={supp.name}
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, delay: 0.1 + i * 0.05 }}
-                className="elevated-card rounded-xl p-5 group"
+                className="elevated-card rounded-xl p-5"
               >
                 <div className="flex items-start gap-4">
-                  {/* Priority dot */}
+                  {/* Icon */}
                   <div className={`w-9 h-9 rounded-lg ${config.bg} flex items-center justify-center shrink-0 mt-0.5`}>
-                    <Pill className={`w-4 h-4 ${config.color}`} />
+                    <Icon className={`w-4 h-4 ${config.color}`} />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    {/* Title row */}
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    {/* Title + badge */}
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                       <h3 className="text-sm font-bold">{supp.name}</h3>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${config.bg} ${config.color}`}>{config.label}</span>
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${config.bg} ${config.color}`}>
+                        {config.label}
+                      </span>
                     </div>
+
+                    {/* Product name */}
+                    <p className="text-[11px] text-muted-foreground/60 mb-2 italic">{supp.productName}</p>
 
                     {/* Reason */}
                     <p className="text-[13px] text-muted-foreground leading-relaxed mb-3">{supp.reason}</p>
 
                     {/* Details grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] mb-3">
                       <div className="bg-card rounded-lg p-2.5">
                         <span className="text-muted-foreground/70 block mb-0.5">用量</span>
                         <span className="font-semibold text-foreground">{supp.dosage}</span>
@@ -174,26 +147,25 @@ export default function Supplements() {
                         <span className="text-muted-foreground/70 block mb-0.5">月額目安</span>
                         <span className="font-semibold text-foreground">¥{supp.monthlyPrice.toLocaleString()}</span>
                       </div>
-                      {supp.biomarker !== "—" && (
+                      {supp.biomarker && supp.currentValue && supp.targetValue && (
                         <div className="bg-card rounded-lg p-2.5">
                           <span className="text-muted-foreground/70 block mb-0.5">{supp.biomarker}</span>
-                          <BiomarkerBar current={supp.currentValue} target={supp.targetValue} />
+                          <BiomarkerRow current={supp.currentValue} target={supp.targetValue} />
                         </div>
                       )}
                     </div>
 
                     {/* Amazon button */}
-                    <div className="mt-3">
-                      <a
-                        href={SUPPLEMENT_AMAZON_URLS[supp.name]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg transition-colors bg-orange-500 hover:bg-orange-600 text-white"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                        Amazonで見る →
-                      </a>
-                    </div>
+                    <a
+                      href={supp.amazonUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-sm font-semibold px-3 py-1.5 rounded-lg bg-orange-500 hover:bg-orange-600 text-white transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Amazonで購入 →
+                      <span className="text-[10px] font-normal opacity-80 ml-1">Life Extension</span>
+                    </a>
                   </div>
                 </div>
               </motion.div>
@@ -201,41 +173,51 @@ export default function Supplements() {
           })}
         </div>
 
-        {/* Order CTA */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="elevated-card rounded-xl p-6 text-center">
+        {/* CTA section */}
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="elevated-card rounded-xl p-6 text-center"
+        >
           <Star className="w-5 h-5 text-amber mx-auto mb-3" />
-          <h3 className="text-base font-bold mb-1.5">パーソナライズ・サプリメントパックを注文</h3>
-          <p className="text-xs text-muted-foreground mb-4">上記のサプリメントを、1日分ずつ個包装でお届けします。</p>
+          <h3 className="text-base font-bold mb-1.5">Life Extension 推奨セットを見る</h3>
+          <p className="text-xs text-muted-foreground mb-4">
+            上記4製品をAmazonでまとめて確認できます。
+          </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <Button
-              onClick={handleOpenAllAmazon}
+              onClick={handleOpenAll}
               className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold h-10 px-8"
             >
-              <ShoppingCart className="w-4 h-4" /> 各サプリをAmazonで探す
+              <ShoppingCart className="w-4 h-4" />
+              4製品をまとめてAmazonで見る
             </Button>
             <Button
-              onClick={handleSubscriptionOrder}
+              onClick={handleSubscription}
               variant="outline"
               className="gap-2 text-sm font-semibold h-10 px-6 bg-gray-700 border-gray-600 text-gray-300 hover:bg-gray-600 hover:text-gray-200"
             >
-              近日：定期便で一括注文
+              定期便で一括注文（準備中）
             </Button>
           </div>
         </motion.div>
 
         {/* Affiliate notice */}
         <p className="mt-4 text-xs text-gray-500">
-          ※ Amazonリンクはアフィリエイトリンクを含む場合があります。
+          ※ AmazonリンクはLifeExtension製品のアフィリエイトリンクを含む場合があります。
+          "XXXXX"はAmazonアソシエイトID取得後に置き換えてください。
         </p>
 
         {/* Disclaimer */}
-        <div className="mt-3 flex items-start gap-2 text-[11px] text-muted-foreground">
+        <div className="mt-3 mb-6 flex items-start gap-2 text-[11px] text-muted-foreground">
           <Info className="w-3 h-3 mt-0.5 shrink-0" />
           <p>
             サプリメントの提案は管理栄養士監修のアルゴリズムに基づくものであり、医薬品の処方ではありません。
             服用中の薬がある場合は、必ず医師にご相談ください。効果効能を保証するものではありません。
           </p>
         </div>
+
       </div>
     </DashboardLayout>
   );
