@@ -16,6 +16,9 @@
     },
     "api/analyze-nutrition.ts": {
       "maxDuration": 30
+    },
+    "api/analyze-supplements.ts": {
+      "maxDuration": 30
     }
   }
 }
