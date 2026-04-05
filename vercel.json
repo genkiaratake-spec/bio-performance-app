@@ -22,6 +22,9 @@
     },
     "api/analyze-blood-test.ts": {
       "maxDuration": 60
+    },
+    "api/lookup-barcode.ts": {
+      "maxDuration": 30
     }
   }
 }
