@@ -16,6 +16,11 @@ export interface MealLogEntry {
   totalCarbs: number;
   healthScore: number;
   loggedAt: string;      // ISO timestamp
+  source?: 'photo' | 'barcode' | 'manual';
+  fiber?: number;
+  sodium?: number;
+  note?: string;
+  barcode?: string;
 }
 
 export interface DailyMeal {
