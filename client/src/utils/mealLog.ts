@@ -17,8 +17,17 @@ export interface MealLogEntry {
   healthScore: number;
   loggedAt: string;      // ISO timestamp
   source?: 'photo' | 'barcode' | 'manual';
-  fiber?: number;
-  sodium?: number;
+  // 炭水化物の内訳
+  fiber?: number;    // 食物繊維 (g)
+  sugar?: number;    // 糖質 (g)
+  // 脂質の内訳
+  saturatedFat?: number;  // 飽和脂肪酸 (g)
+  cholesterol?: number;   // コレステロール (mg)
+  // ミネラル
+  iron?: number;      // 鉄分 (mg)
+  sodium?: number;    // ナトリウム (mg)
+  potassium?: number; // カリウム (mg)
+  // その他
   note?: string;
   barcode?: string;
 }
