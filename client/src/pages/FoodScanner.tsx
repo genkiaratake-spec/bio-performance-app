@@ -144,9 +144,12 @@ export default function FoodScanner() {
         formData.append('file', file);
       }
 
-      const healthCheckData = localStorage.getItem('healthCheckData');
-      if (healthCheckData) {
-        formData.append('healthData', healthCheckData);
+      // bloodTestResults（新形式）を優先、なければ healthCheckData（旧形式）を使用
+      const bloodTestRaw = localStorage.getItem('bloodTestResults');
+      const healthCheckRaw = localStorage.getItem('healthCheckData');
+      const healthPayload = bloodTestRaw || healthCheckRaw;
+      if (healthPayload) {
+        formData.append('healthData', healthPayload);
       }
 
       const controller = new AbortController();

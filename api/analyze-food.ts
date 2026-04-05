@@ -51,7 +51,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mimeType === 'image/webp' ? 'image/webp' : 'image/jpeg'
     ) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
 
-    const healthContext = healthData ? `
+    // bloodTestResults 形式（markers[]）と旧形式（ldlCholesterol等）の両方に対応
+    let healthContext = '';
+    if (healthData) {
+      if (Array.isArray(healthData.markers) && healthData.markers.length > 0) {
+        // 新形式: bloodTestResults（markers[]）
+        const lowMarkers   = healthData.markers.filter((m: any) => m.status === 'low');
+        const highMarkers  = healthData.markers.filter((m: any) => m.status === 'borderline');
+
+        const lowNames  = lowMarkers.map((m: any) => m.name).join('、') || 'なし';
+        const highNames = highMarkers.map((m: any) => m.name).join('、') || 'なし';
+
+        healthContext = `
+【このユーザーの血液検査データ（AIによる解析結果）】
+- 不足・低値の項目: ${lowNames}
+- 要注意の項目: ${highNames}
+
+血液検査結果を考慮して healthScore と advice を生成してください：
+
+不足バイオマーカーへの対応（スコアアップ要因）:
+- フェリチン/鉄 が低値 → 赤身肉・レバー・ほうれん草・あさりを含む料理を高評価し、adviceでこれらを推奨
+- ビタミンD が低値 → 鮭・サバ・イワシ・きのこ類・卵を含む料理を高評価し、adviceでこれらを推奨
+- 亜鉛 が低値 → 牡蠣・牛肉・ナッツ類を含む料理を高評価
+- マグネシウム が低値 → 海藻・ナッツ・豆類を含む料理を高評価
+
+要注意バイオマーカーへの対応（スコアダウン要因）:
+- 中性脂肪/トリグリセリド が要注意 → 揚げ物・白米過多・砂糖多めの食事はスコアを下げ、adviceで注意喚起
+- LDL/コレステロール が要注意 → 飽和脂肪酸多い食事（バター・肉の脂身・揚げ物）はスコアを下げる
+- 血糖/HbA1c が要注意 → 糖質過多の食事はスコアを下げ、食物繊維・低GI食を推奨
+- CRP が要注意 → 加工肉・超加工食品・トランス脂肪酸はスコアを下げる
+`;
+      } else {
+        // 旧形式: healthCheckData（ldlCholesterol等のフラット構造）
+        healthContext = `
 【このユーザーの健康診断データ】
 - LDLコレステロール: ${healthData.ldlCholesterol ?? '不明'} mg/dL（基準値60-119）
 - HDLコレステロール: ${healthData.hdlCholesterol ?? '不明'} mg/dL（基準値40-119）
@@ -70,7 +102,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 - CRPが0.30以上の場合、炎症を促進する食事（加工肉・トランス脂肪酸）はスコアを下げる
 - フェリチンが低い場合、鉄分を含む食事はスコアを上げる
 - BMIが25以上の場合、高カロリー食はスコアを下げる
-` : '';
+`;
+      }
+    }
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
