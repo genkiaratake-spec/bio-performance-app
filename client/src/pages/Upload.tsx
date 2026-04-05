@@ -189,7 +189,7 @@ function StepUpload({
         <ArrowLeft size={15} /> 戻る
       </button>
 
-      <h2 style={{ fontSize: 19, fontWeight: 700, color: "#fff", marginBottom: 4 }}>健康診断データをアップロード</h2>
+      <h2 style={{ fontSize: 19, fontWeight: 700, color: "#fff", marginBottom: 4 }}>血液検査結果をアップロード</h2>
       <p style={{ fontSize: 12, color: "#666", marginBottom: 20 }}>PDF・JPG・PNG に対応</p>
 
       {/* Drop zone */}
