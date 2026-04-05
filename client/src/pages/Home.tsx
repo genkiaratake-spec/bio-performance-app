@@ -1,7 +1,7 @@
 import { motion, AnimatePresence } from "framer-motion";
-import { Link } from "wouter";
 import { Camera, Clock } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useLocation } from "wouter";
 import {
   getTodayMealLog,
   getTodayNutritionSummary,
@@ -12,7 +12,7 @@ import {
 import BarcodeScanner from "../components/BarcodeScanner";
 import ManualFoodEntry, { MealEntry } from "../components/ManualFoodEntry";
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── constants ─────────────────────────────────────────────────────────────────
 const dateStr = new Date().toLocaleDateString("ja-JP", {
   year: "numeric", month: "long", day: "numeric", weekday: "long",
 });
@@ -22,24 +22,19 @@ const API_BASE =
     ? "https://bio-performance-app.vercel.app"
     : "";
 
-const MEAL_LABELS: Record<MealLogEntry["mealType"], { label: string }> = {
-  breakfast: { label: "朝食" },
-  lunch:     { label: "昼食" },
-  dinner:    { label: "夕食" },
-  snack:     { label: "間食" },
+const MEAL_LABELS: Record<MealLogEntry["mealType"], string> = {
+  breakfast: "朝食", lunch: "昼食", dinner: "夕食", snack: "間食",
 };
 
-const MEAL_PILL_COLORS: Record<MealLogEntry["mealType"], { bg: string; text: string }> = {
+const MEAL_PILL: Record<MealLogEntry["mealType"], { bg: string; text: string }> = {
   breakfast: { bg: "#ff993320", text: "#ff9933" },
   lunch:     { bg: "#4ade8020", text: "#4ade80" },
   dinner:    { bg: "#a78bfa20", text: "#a78bfa" },
   snack:     { bg: "#fbbf2420", text: "#fbbf24" },
 };
 
-const SOURCE_ICONS: Record<string, string> = {
-  photo:   "📷",
-  barcode: "🔲",
-  manual:  "✏️",
+const SOURCE_ICON: Record<string, string> = {
+  photo: "📷", barcode: "🔲", manual: "✏️",
 };
 
 function guessMealType(): MealLogEntry["mealType"] {
@@ -50,20 +45,15 @@ function guessMealType(): MealLogEntry["mealType"] {
   return "snack";
 }
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-// ── sub components ────────────────────────────────────────────────────────────
-function ProgressBar({ value, max, color = "#4ade80", bg = "#1a1a22", height = 6 }: {
-  value: number; max: number; color?: string; bg?: string; height?: number;
+// ── sub-components ────────────────────────────────────────────────────────────
+function ProgressBar({ value, max, color = "#4ade80", height = 6 }: {
+  value: number; max: number; color?: string; height?: number;
 }) {
   const pct = Math.min(100, max > 0 ? Math.round((value / max) * 100) : 0);
   return (
-    <div style={{ background: bg, borderRadius: 999, height, overflow: "hidden" }}>
+    <div style={{ background: "#1a1a22", borderRadius: 999, height, overflow: "hidden" }}>
       <motion.div
-        initial={{ width: 0 }}
-        animate={{ width: `${pct}%` }}
+        initial={{ width: 0 }} animate={{ width: `${pct}%` }}
         transition={{ duration: 0.8, ease: "easeOut" }}
         style={{ background: color, height: "100%", borderRadius: 999 }}
       />
@@ -73,13 +63,13 @@ function ProgressBar({ value, max, color = "#4ade80", bg = "#1a1a22", height = 6
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ background: "#111118", border: "1px solid #222", borderRadius: 16, padding: "16px" }}>
+    <div style={{ background: "#111118", border: "1px solid #222", borderRadius: 16, padding: 16 }}>
       {children}
     </div>
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SLabel({ children }: { children: React.ReactNode }) {
   return (
     <p style={{ fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: "0.15em", marginBottom: 10, fontWeight: 600 }}>
       {children}
@@ -95,20 +85,47 @@ function BarcodeIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+// ── types ─────────────────────────────────────────────────────────────────────
+interface FoodItem { name: string; amount: string; calories: number; protein: number; fat: number; carbs: number; }
+interface PhotoResult {
+  mealName: string; items: FoodItem[];
+  totalCalories: number; totalProtein: number; totalFat: number; totalCarbs: number;
+  healthScore: number; advice: string;
+}
+interface BarcodeResultState {
+  found: boolean; barcode?: string;
+  product?: { name: string; brand: string; calories: number; protein: number; fat: number; carbs: number; fiber?: number; sodium?: number; image_url?: string; };
+  aiAdvice?: string; warning?: string;
+}
+
 // ── main ─────────────────────────────────────────────────────────────────────
 export default function Home() {
-  const [todayLogs, setTodayLogs]   = useState<MealLogEntry[]>([]);
-  const [nutrition, setNutrition]   = useState({ totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0, mealCount: 0 });
+  const [, navigate]   = useLocation();
+  const photoInputRef  = useRef<HTMLInputElement>(null);
+
+  // data
+  const [todayLogs,  setTodayLogs]  = useState<MealLogEntry[]>([]);
+  const [nutrition,  setNutrition]  = useState({ totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0, mealCount: 0 });
   const [todayScore, setTodayScore] = useState(0);
 
-  // UI state
-  const [showScanner,      setShowScanner]      = useState(false);
-  const [showManualEntry,  setShowManualEntry]  = useState(false);
-  const [scanLoading,      setScanLoading]      = useState(false);
-  const [barcodeResult,    setBarcodeResult]    = useState<BarcodeResultState | null>(null);
-  const [toast,            setToast]            = useState<string | null>(null);
+  // modals
+  const [showScanner,     setShowScanner]     = useState(false);
+  const [showManualEntry, setShowManualEntry] = useState(false);
 
-  // ── data refresh ────────────────────────────────────────────────────────
+  // photo analysis
+  const [photoLoading,   setPhotoLoading]   = useState(false);
+  const [photoResult,    setPhotoResult]    = useState<PhotoResult | null>(null);
+  const [photoPreview,   setPhotoPreview]   = useState<string | null>(null);
+  const [photoError,     setPhotoError]     = useState<string | null>(null);
+
+  // barcode
+  const [scanLoading,    setScanLoading]    = useState(false);
+  const [barcodeResult,  setBarcodeResult]  = useState<BarcodeResultState | null>(null);
+
+  // toast
+  const [toast, setToast] = useState<string | null>(null);
+
+  // ── data ──────────────────────────────────────────────────────────────
   const refresh = useCallback(() => {
     setTodayLogs(getTodayMealLog());
     setNutrition(getTodayNutritionSummary());
@@ -125,43 +142,125 @@ export default function Home() {
     };
   }, [refresh]);
 
-  const userProfile  = JSON.parse(localStorage.getItem("userProfile") || "{}");
-  const calorieGoal  = parseInt(userProfile.dailyCalories || "2000");
-  const proteinGoal  = parseInt(userProfile.dailyProtein  || "150");
-  const fatGoal      = parseInt(userProfile.dailyFat      || "65");
-  const carbsGoal    = parseInt(userProfile.dailyCarbs    || "260");
+  const userProfile = JSON.parse(localStorage.getItem("userProfile") || "{}");
+  const calorieGoal = parseInt(userProfile.dailyCalories || "2000");
+  const proteinGoal = parseInt(userProfile.dailyProtein  || "150");
+  const fatGoal     = parseInt(userProfile.dailyFat      || "65");
+  const carbsGoal   = parseInt(userProfile.dailyCarbs    || "260");
 
   const { totalCalories, totalProtein, totalFat, totalCarbs } = nutrition;
-  const hasLogs  = todayLogs.length > 0;
+  const hasLogs   = todayLogs.length > 0;
   const totalPfcG = totalProtein + totalFat + totalCarbs;
 
-  // ── toast helper ─────────────────────────────────────────────────────────
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2200);
   };
 
-  // ── manual entry save ────────────────────────────────────────────────────
+  // ── photo capture flow ────────────────────────────────────────────────
+  const resizeImage = (file: File): Promise<Blob> =>
+    new Promise((resolve) => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d")!;
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const max = 1024;
+        let { width: w, height: h } = img;
+        if (w > max || h > max) {
+          if (w > h) { h = (h / w) * max; w = max; }
+          else       { w = (w / h) * max; h = max; }
+        }
+        canvas.width = w; canvas.height = h;
+        ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.85);
+      };
+      img.src = url;
+    });
+
+  const handlePhotoFile = async (file: File) => {
+    setPhotoError(null);
+    setPhotoResult(null);
+    const preview = URL.createObjectURL(file);
+    setPhotoPreview(preview);
+    setPhotoLoading(true);
+
+    try {
+      const formData = new FormData();
+      if (file.size > 2 * 1024 * 1024) {
+        try {
+          const blob = await resizeImage(file);
+          formData.append("file", new File([blob], "food.jpg", { type: "image/jpeg" }));
+        } catch {
+          formData.append("file", file);
+        }
+      } else {
+        formData.append("file", file);
+      }
+
+      const bloodTestRaw  = localStorage.getItem("bloodTestResults");
+      const healthCheckRaw = localStorage.getItem("healthCheckData");
+      const healthPayload = bloodTestRaw || healthCheckRaw;
+      if (healthPayload) formData.append("healthData", healthPayload);
+
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 30000);
+      const res  = await fetch(`${API_BASE}/api/analyze-food`, { method: "POST", body: formData, signal: controller.signal });
+      clearTimeout(tid);
+
+      const data = await res.json();
+      if (data.success && data.result) {
+        setPhotoResult(data.result);
+      } else {
+        setPhotoError(data.error || "解析に失敗しました。もう一度お試しください。");
+      }
+    } catch (e: any) {
+      setPhotoError(e.name === "AbortError" ? "タイムアウトしました。再度お試しください。" : "通信エラーが発生しました。");
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
+
+  const handlePhotoInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handlePhotoFile(file);
+    e.target.value = "";
+  };
+
+  const handleSavePhoto = () => {
+    if (!photoResult) return;
+    addMealLog({
+      mealType:      guessMealType(),
+      mealName:      photoResult.mealName,
+      totalCalories: photoResult.totalCalories,
+      totalProtein:  photoResult.totalProtein,
+      totalFat:      photoResult.totalFat,
+      totalCarbs:    photoResult.totalCarbs,
+      healthScore:   photoResult.healthScore,
+      source:        "photo",
+    });
+    setPhotoResult(null);
+    setPhotoPreview(null);
+    showToast("✓ 食事を記録しました");
+    refresh();
+  };
+
+  // ── manual entry ──────────────────────────────────────────────────────
   const handleManualSave = (meal: MealEntry) => {
     addMealLog({
-      mealType:      meal.time,
-      mealName:      meal.name,
-      totalCalories: meal.calories,
-      totalProtein:  meal.protein,
-      totalFat:      meal.fat,
-      totalCarbs:    meal.carbs,
-      healthScore:   0,
-      source:        'manual',
-      fiber:         meal.fiber,
-      sodium:        meal.sodium,
-      note:          meal.note,
+      mealType: meal.time, mealName: meal.name,
+      totalCalories: meal.calories, totalProtein: meal.protein,
+      totalFat: meal.fat, totalCarbs: meal.carbs,
+      healthScore: 0, source: "manual",
+      fiber: meal.fiber, sodium: meal.sodium, note: meal.note,
     });
     setShowManualEntry(false);
     showToast("✓ 食事を記録しました");
     refresh();
   };
 
-  // ── barcode scan ─────────────────────────────────────────────────────────
+  // ── barcode ──────────────────────────────────────────────────────────
   const handleBarcodeDetected = async (barcode: string) => {
     setShowScanner(false);
     setScanLoading(true);
@@ -187,58 +286,158 @@ export default function Home() {
     if (!barcodeResult?.product) return;
     const p = barcodeResult.product;
     addMealLog({
-      mealType:      guessMealType(),
-      mealName:      p.name,
-      totalCalories: p.calories,
-      totalProtein:  p.protein,
-      totalFat:      p.fat,
-      totalCarbs:    p.carbs,
-      healthScore:   0,
-      source:        'barcode',
-      barcode:       barcodeResult.barcode,
-      fiber:         p.fiber,
-      sodium:        p.sodium,
+      mealType: guessMealType(), mealName: p.name,
+      totalCalories: p.calories, totalProtein: p.protein,
+      totalFat: p.fat, totalCarbs: p.carbs,
+      healthScore: 0, source: "barcode",
+      barcode: barcodeResult.barcode,
+      fiber: p.fiber, sodium: p.sodium,
     });
     setBarcodeResult(null);
     showToast("✓ 食事ログに追加しました");
     refresh();
   };
 
+  // ── render ────────────────────────────────────────────────────────────
   return (
     <div style={{ height: "100vh", overflowY: "auto", WebkitOverflowScrolling: "touch", background: "#0a0a0f", color: "#fff", paddingBottom: 100 }}>
 
+      {/* hidden camera input */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        style={{ display: "none" }}
+        onChange={handlePhotoInputChange}
+      />
+
       {/* ── Overlays ── */}
       <AnimatePresence>
-        {showScanner && (
-          <BarcodeScanner onDetected={handleBarcodeDetected} onClose={() => setShowScanner(false)} />
-        )}
+        {showScanner && <BarcodeScanner onDetected={handleBarcodeDetected} onClose={() => setShowScanner(false)} />}
       </AnimatePresence>
 
       <AnimatePresence>
-        {showManualEntry && (
-          <ManualFoodEntry onSave={handleManualSave} onClose={() => setShowManualEntry(false)} />
+        {showManualEntry && <ManualFoodEntry onSave={handleManualSave} onClose={() => setShowManualEntry(false)} />}
+      </AnimatePresence>
+
+      {/* Photo loading */}
+      <AnimatePresence>
+        {photoLoading && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.85)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}
+          >
+            {photoPreview && (
+              <img src={photoPreview} style={{ width: 160, height: 160, objectFit: "cover", borderRadius: 16, border: "2px solid #4ade8040", marginBottom: 8 }} />
+            )}
+            <div style={{ width: 44, height: 44, borderRadius: "50%", border: "3px solid #4ade8040", borderTopColor: "#4ade80", animation: "spin 0.8s linear infinite" }} />
+            <p style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>AIが食事を解析中...</p>
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Scan loading */}
+      {/* Barcode loading */}
       <AnimatePresence>
         {scanLoading && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{
-              position: "fixed", inset: 0, zIndex: 9998,
-              background: "rgba(0,0,0,0.75)",
-              display: "flex", flexDirection: "column",
-              alignItems: "center", justifyContent: "center", gap: 16,
-            }}
+            style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.75)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}
           >
-            <div style={{
-              width: 48, height: 48, borderRadius: "50%",
-              border: "3px solid #4ade8040", borderTopColor: "#4ade80",
-              animation: "spin 0.8s linear infinite",
-            }} />
+            <div style={{ width: 44, height: 44, borderRadius: "50%", border: "3px solid #4ade8040", borderTopColor: "#4ade80", animation: "spin 0.8s linear infinite" }} />
             <p style={{ color: "#fff", fontSize: 14, fontWeight: 600 }}>商品を検索中...</p>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Photo result modal */}
+      <AnimatePresence>
+        {(photoResult || photoError) && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
+            onClick={() => { setPhotoResult(null); setPhotoError(null); setPhotoPreview(null); }}
+          >
+            <motion.div
+              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 28, stiffness: 280 }}
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: "100%", maxWidth: 480, background: "#111118", borderRadius: "20px 20px 0 0", padding: "24px 20px 40px", maxHeight: "85vh", overflowY: "auto" }}
+            >
+              <div style={{ width: 36, height: 4, background: "#333", borderRadius: 2, margin: "0 auto 20px" }} />
+
+              {photoError ? (
+                <div style={{ textAlign: "center", padding: "20px 0" }}>
+                  <p style={{ fontSize: 36, marginBottom: 12 }}>⚠️</p>
+                  <p style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginBottom: 8 }}>解析に失敗しました</p>
+                  <p style={{ fontSize: 13, color: "#777", marginBottom: 24 }}>{photoError}</p>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => { setPhotoError(null); setPhotoPreview(null); }} style={secBtn}>閉じる</button>
+                    <button onClick={() => { setPhotoError(null); setPhotoPreview(null); photoInputRef.current?.click(); }} style={outBtn}>再撮影</button>
+                  </div>
+                </div>
+              ) : photoResult && (
+                <>
+                  {photoPreview && (
+                    <img src={photoPreview} alt="food" style={{ width: "100%", height: 160, objectFit: "cover", borderRadius: 12, marginBottom: 16, border: "1px solid #222" }} />
+                  )}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+                    <p style={{ fontSize: 17, fontWeight: 800, color: "#fff", flex: 1 }}>{photoResult.mealName}</p>
+                    {photoResult.healthScore > 0 && (
+                      <div style={{ background: "#4ade8018", border: "1px solid #4ade8040", borderRadius: 10, padding: "4px 10px", textAlign: "center" }}>
+                        <p style={{ fontSize: 10, color: "#4ade80", fontWeight: 600 }}>スコア</p>
+                        <p style={{ fontSize: 20, fontWeight: 800, color: "#4ade80", lineHeight: 1 }}>{photoResult.healthScore}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Nutrition */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#0e0e15", borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid #1e1e28" }}>
+                    {[
+                      { label: "カロリー",   value: `${photoResult.totalCalories} kcal`, color: "#fff" },
+                      { label: "タンパク質", value: `${photoResult.totalProtein}g`,       color: "#4ade80" },
+                      { label: "脂質",       value: `${photoResult.totalFat}g`,           color: "#fbbf24" },
+                      { label: "炭水化物",   value: `${photoResult.totalCarbs}g`,         color: "#60a5fa" },
+                    ].map(({ label, value, color }) => (
+                      <div key={label}>
+                        <p style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>{label}</p>
+                        <p style={{ fontSize: 15, fontWeight: 700, color }}>{value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Food items */}
+                  {photoResult.items?.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <p style={{ fontSize: 10, color: "#555", marginBottom: 8, letterSpacing: "0.1em", fontWeight: 600, textTransform: "uppercase" }}>内訳</p>
+                      {photoResult.items.map((item, i) => (
+                        <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: i < photoResult.items.length - 1 ? "1px solid #1a1a22" : "none" }}>
+                          <div>
+                            <p style={{ fontSize: 13, color: "#ddd", fontWeight: 500 }}>{item.name}</p>
+                            <p style={{ fontSize: 10, color: "#555" }}>{item.amount}</p>
+                          </div>
+                          <p style={{ fontSize: 12, fontWeight: 600, color: "#fff" }}>{item.calories} kcal</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Advice */}
+                  {photoResult.advice && (
+                    <div style={{ background: "#0f2018", border: "1px solid #4ade8030", borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                      <p style={{ fontSize: 10, color: "#4ade80", letterSpacing: "0.1em", marginBottom: 6, fontWeight: 700, textTransform: "uppercase" }}>AIアドバイス</p>
+                      <p style={{ fontSize: 13, color: "#ddd", lineHeight: 1.65 }}>{photoResult.advice}</p>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => { setPhotoResult(null); setPhotoPreview(null); }} style={secBtn}>閉じる</button>
+                    <button onClick={handleSavePhoto} style={priBtn}>食事に記録する</button>
+                  </div>
+                </>
+              )}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -248,23 +447,14 @@ export default function Home() {
         {barcodeResult && (
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            style={{
-              position: "fixed", inset: 0, zIndex: 9998,
-              background: "rgba(0,0,0,0.8)",
-              display: "flex", alignItems: "flex-end", justifyContent: "center",
-            }}
+            style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
             onClick={() => setBarcodeResult(null)}
           >
             <motion.div
               initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 280 }}
               onClick={(e) => e.stopPropagation()}
-              style={{
-                width: "100%", maxWidth: 480,
-                background: "#111118", borderRadius: "20px 20px 0 0",
-                padding: "24px 20px 40px",
-                maxHeight: "85vh", overflowY: "auto",
-              }}
+              style={{ width: "100%", maxWidth: 480, background: "#111118", borderRadius: "20px 20px 0 0", padding: "24px 20px 40px", maxHeight: "85vh", overflowY: "auto" }}
             >
               <div style={{ width: 36, height: 4, background: "#333", borderRadius: 2, margin: "0 auto 20px" }} />
 
@@ -272,64 +462,40 @@ export default function Home() {
                 <div style={{ textAlign: "center", padding: "20px 0" }}>
                   <p style={{ fontSize: 40, marginBottom: 12 }}>🔍</p>
                   <p style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 8 }}>商品が見つかりませんでした</p>
-                  <p style={{ fontSize: 13, color: "#777", marginBottom: 24 }}>
-                    バーコード: {barcodeResult.barcode}<br />手動で入力しますか？
-                  </p>
+                  <p style={{ fontSize: 13, color: "#777", marginBottom: 24 }}>バーコード: {barcodeResult.barcode}</p>
                   <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={() => setBarcodeResult(null)} style={secondaryBtnStyle}>閉じる</button>
-                    <button
-                      onClick={() => { setBarcodeResult(null); setShowScanner(true); }}
-                      style={outlineBtnStyle}
-                    >
-                      再スキャン
-                    </button>
-                    <button
-                      onClick={() => { setBarcodeResult(null); setShowManualEntry(true); }}
-                      style={outlineBtnStyle}
-                    >
-                      手入力
-                    </button>
+                    <button onClick={() => setBarcodeResult(null)} style={secBtn}>閉じる</button>
+                    <button onClick={() => { setBarcodeResult(null); setShowScanner(true); }} style={outBtn}>再スキャン</button>
+                    <button onClick={() => { setBarcodeResult(null); setShowManualEntry(true); }} style={outBtn}>手入力</button>
                   </div>
                 </div>
               ) : (
                 <>
                   {barcodeResult.product?.image_url && (
                     <div style={{ textAlign: "center", marginBottom: 16 }}>
-                      <img
-                        src={barcodeResult.product.image_url}
-                        alt={barcodeResult.product.name}
+                      <img src={barcodeResult.product.image_url} alt={barcodeResult.product.name}
                         style={{ maxHeight: 120, maxWidth: "100%", objectFit: "contain", borderRadius: 12, border: "1px solid #222" }}
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                      />
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
                     </div>
                   )}
-                  <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4, lineHeight: 1.3 }}>
-                    {barcodeResult.product?.name}
-                  </p>
-                  {barcodeResult.product?.brand && (
-                    <p style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>{barcodeResult.product.brand}</p>
-                  )}
+                  <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>{barcodeResult.product?.name}</p>
+                  {barcodeResult.product?.brand && <p style={{ fontSize: 12, color: "#666", marginBottom: 14 }}>{barcodeResult.product.brand}</p>}
 
-                  {/* Nutrition grid */}
-                  <div style={{ background: "#0e0e15", borderRadius: 12, padding: 14, marginBottom: 16, border: "1px solid #1e1e28" }}>
-                    <p style={{ fontSize: 10, color: "#555", letterSpacing: "0.1em", marginBottom: 10, fontWeight: 600, textTransform: "uppercase" }}>
-                      100g 当たりの栄養成分
-                    </p>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      {[
-                        { label: "カロリー",   value: `${barcodeResult.product?.calories ?? 0} kcal`, color: "#fff" },
-                        { label: "タンパク質", value: `${barcodeResult.product?.protein  ?? 0} g`,    color: "#4ade80" },
-                        { label: "脂質",       value: `${barcodeResult.product?.fat      ?? 0} g`,    color: "#fbbf24" },
-                        { label: "炭水化物",   value: `${barcodeResult.product?.carbs    ?? 0} g`,    color: "#60a5fa" },
-                        ...(barcodeResult.product?.fiber  != null ? [{ label: "食物繊維",   value: `${barcodeResult.product.fiber} g`,   color: "#a78bfa" }] : []),
-                        ...(barcodeResult.product?.sodium != null ? [{ label: "食塩相当量", value: `${barcodeResult.product.sodium} mg`, color: "#f87171" }] : []),
-                      ].map(({ label, value, color }) => (
-                        <div key={label}>
-                          <p style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>{label}</p>
-                          <p style={{ fontSize: 15, fontWeight: 700, color }}>{value}</p>
-                        </div>
-                      ))}
-                    </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#0e0e15", borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid #1e1e28" }}>
+                    <p style={{ fontSize: 10, color: "#555", letterSpacing: "0.1em", fontWeight: 600, textTransform: "uppercase", gridColumn: "1/-1", marginBottom: 6 }}>100g 当たりの栄養成分</p>
+                    {[
+                      { label: "カロリー",   value: `${barcodeResult.product?.calories ?? 0} kcal`, color: "#fff" },
+                      { label: "タンパク質", value: `${barcodeResult.product?.protein ?? 0}g`,       color: "#4ade80" },
+                      { label: "脂質",       value: `${barcodeResult.product?.fat ?? 0}g`,           color: "#fbbf24" },
+                      { label: "炭水化物",   value: `${barcodeResult.product?.carbs ?? 0}g`,         color: "#60a5fa" },
+                      ...(barcodeResult.product?.fiber  != null ? [{ label: "食物繊維", value: `${barcodeResult.product.fiber}g`, color: "#a78bfa" }] : []),
+                      ...(barcodeResult.product?.sodium != null ? [{ label: "食塩",    value: `${barcodeResult.product.sodium}mg`, color: "#f87171" }] : []),
+                    ].map(({ label, value, color }) => (
+                      <div key={label}>
+                        <p style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>{label}</p>
+                        <p style={{ fontSize: 15, fontWeight: 700, color }}>{value}</p>
+                      </div>
+                    ))}
                   </div>
 
                   {barcodeResult.aiAdvice && (
@@ -345,9 +511,9 @@ export default function Home() {
                     </div>
                   )}
 
-                  <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                    <button onClick={() => setBarcodeResult(null)} style={secondaryBtnStyle}>閉じる</button>
-                    <button onClick={handleSaveBarcodeToLog} style={primaryBtnStyle}>食事に記録する</button>
+                  <div style={{ display: "flex", gap: 10 }}>
+                    <button onClick={() => setBarcodeResult(null)} style={secBtn}>閉じる</button>
+                    <button onClick={handleSaveBarcodeToLog} style={priBtn}>食事に記録する</button>
                   </div>
                 </>
               )}
@@ -361,12 +527,7 @@ export default function Home() {
         {toast && (
           <motion.div
             initial={{ opacity: 0, y: -16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }}
-            style={{
-              position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)",
-              zIndex: 9999, background: "#4ade80", color: "#000",
-              padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 700,
-              boxShadow: "0 4px 20px rgba(74,222,128,0.4)", whiteSpace: "nowrap",
-            }}
+            style={{ position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 9999, background: "#4ade80", color: "#000", padding: "10px 20px", borderRadius: 10, fontSize: 13, fontWeight: 700, boxShadow: "0 4px 20px rgba(74,222,128,0.4)", whiteSpace: "nowrap" }}
           >
             {toast}
           </motion.div>
@@ -379,30 +540,19 @@ export default function Home() {
           <p style={{ fontSize: 11, color: "#555", marginBottom: 2 }}>{dateStr}</p>
           <h1 style={{ fontSize: 20, fontWeight: 700, color: "#fff", lineHeight: 1.2 }}>今日の食事</h1>
         </div>
-        <div style={{
-          width: 38, height: 38, borderRadius: "50%",
-          background: "linear-gradient(135deg, #4ade80, #22c55e)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 14, fontWeight: 700, color: "#000",
-        }}>
-          G
-        </div>
+        <div style={{ width: 38, height: 38, borderRadius: "50%", background: "linear-gradient(135deg, #4ade80, #22c55e)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#000" }}>G</div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "0 16px" }}>
 
-        {/* ── Diet Score ── */}
+        {/* Score */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
           <Card>
-            <SectionLabel>本日の食事スコア</SectionLabel>
+            <SLabel>本日の食事スコア</SLabel>
             <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginBottom: 12 }}>
-              {hasLogs && todayScore > 0 ? (
-                <span style={{ fontSize: 52, fontWeight: 800, color: "#4ade80", lineHeight: 1 }}>{todayScore}</span>
-              ) : (
-                <span style={{ fontSize: 32, fontWeight: 700, color: "#4ade80", lineHeight: 1 }}>
-                  {hasLogs ? "集計中..." : "---"}
-                </span>
-              )}
+              <span style={{ fontSize: hasLogs && todayScore > 0 ? 52 : 32, fontWeight: 800, color: "#4ade80", lineHeight: 1 }}>
+                {hasLogs && todayScore > 0 ? todayScore : hasLogs ? "集計中..." : "---"}
+              </span>
               <span style={{ fontSize: 16, color: "#555", marginBottom: 6 }}>/ 100</span>
             </div>
             <ProgressBar value={todayScore} max={100} color="#4ade80" height={8} />
@@ -412,15 +562,13 @@ export default function Home() {
           </Card>
         </motion.div>
 
-        {/* ── Calories ── */}
+        {/* Calories */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.07 }}>
           <Card>
-            <SectionLabel>総カロリー</SectionLabel>
+            <SLabel>総カロリー</SLabel>
             <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 10 }}>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 4 }}>
-                <span style={{ fontSize: 40, fontWeight: 800, color: "#fff", lineHeight: 1 }}>
-                  {totalCalories.toLocaleString()}
-                </span>
+                <span style={{ fontSize: 40, fontWeight: 800, color: "#fff", lineHeight: 1 }}>{totalCalories.toLocaleString()}</span>
                 <span style={{ fontSize: 13, color: "#555", marginBottom: 4 }}>/ {calorieGoal.toLocaleString()} kcal</span>
               </div>
               <span style={{ fontSize: 13, fontWeight: 700, color: "#4ade80", background: "#4ade8015", borderRadius: 8, padding: "3px 8px" }}>
@@ -428,39 +576,36 @@ export default function Home() {
               </span>
             </div>
             <ProgressBar value={totalCalories} max={calorieGoal} color="#4ade80" height={8} />
-            <p style={{ fontSize: 11, color: "#555", marginTop: 8 }}>
-              残り {Math.max(0, calorieGoal - totalCalories).toLocaleString()} kcal
-            </p>
+            <p style={{ fontSize: 11, color: "#555", marginTop: 8 }}>残り {Math.max(0, calorieGoal - totalCalories).toLocaleString()} kcal</p>
           </Card>
         </motion.div>
 
-        {/* ── PFC ── */}
+        {/* PFC */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.14 }}>
           <Card>
-            <SectionLabel>PFC摂取量</SectionLabel>
-            {[
+            <SLabel>PFC摂取量</SLabel>
+            {([
               { key: "protein", label: "タンパク質", g: totalProtein, goal: proteinGoal, color: "#4ade80" },
               { key: "fat",     label: "脂質",       g: totalFat,     goal: fatGoal,     color: "#fbbf24" },
               { key: "carbs",   label: "炭水化物",   g: totalCarbs,   goal: carbsGoal,   color: "#60a5fa" },
-            ].map(({ key, label, g, goal, color }) => {
-              const pct = goal > 0 ? Math.round((g / goal) * 100) : 0;
-              return (
-                <div key={key} style={{ marginBottom: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
-                      <span style={{ fontSize: 12, color: "#aaa", fontWeight: 500 }}>{label}</span>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{g}g</span>
-                      <span style={{ fontSize: 11, color: "#555" }}>/ {goal}g</span>
-                      <span style={{ fontSize: 11, color, fontWeight: 600, minWidth: 32, textAlign: "right" }}>{pct}%</span>
-                    </div>
+            ] as const).map(({ key, label, g, goal, color }) => (
+              <div key={key} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: color, display: "inline-block" }} />
+                    <span style={{ fontSize: 12, color: "#aaa", fontWeight: 500 }}>{label}</span>
                   </div>
-                  <ProgressBar value={g} max={goal} color={color} height={5} />
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{g}g</span>
+                    <span style={{ fontSize: 11, color: "#555" }}>/ {goal}g</span>
+                    <span style={{ fontSize: 11, color, fontWeight: 600, minWidth: 32, textAlign: "right" }}>
+                      {goal > 0 ? Math.round((g / goal) * 100) : 0}%
+                    </span>
+                  </div>
                 </div>
-              );
-            })}
+                <ProgressBar value={g} max={goal} color={color} height={5} />
+              </div>
+            ))}
             <div style={{ marginTop: 4 }}>
               <p style={{ fontSize: 10, color: "#444", marginBottom: 5 }}>構成比</p>
               {totalPfcG > 0 ? (
@@ -471,30 +616,24 @@ export default function Home() {
                     <div style={{ flex: totalCarbs,   background: "#60a5fa" }} />
                   </div>
                   <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
-                    {[
-                      { label: "P", color: "#4ade80", g: totalProtein },
-                      { label: "F", color: "#fbbf24", g: totalFat },
-                      { label: "C", color: "#60a5fa", g: totalCarbs },
-                    ].map(({ label, color, g }) => (
-                      <div key={label} style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <span style={{ width: 7, height: 7, borderRadius: 2, background: color, display: "inline-block" }} />
-                        <span style={{ fontSize: 10, color: "#666" }}>{label} {Math.round((g / totalPfcG) * 100)}%</span>
+                    {[["P", "#4ade80", totalProtein], ["F", "#fbbf24", totalFat], ["C", "#60a5fa", totalCarbs]].map(([l, c, g]) => (
+                      <div key={l as string} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ width: 7, height: 7, borderRadius: 2, background: c as string, display: "inline-block" }} />
+                        <span style={{ fontSize: 10, color: "#666" }}>{l} {Math.round(((g as number) / totalPfcG) * 100)}%</span>
                       </div>
                     ))}
                   </div>
                 </>
-              ) : (
-                <div style={{ height: 6, background: "#1a1a22", borderRadius: 4 }} />
-              )}
+              ) : <div style={{ height: 6, background: "#1a1a22", borderRadius: 4 }} />}
             </div>
           </Card>
         </motion.div>
 
-        {/* ── Meal Log ── */}
+        {/* Meal Log */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.21 }}>
           <Card>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-              <SectionLabel>本日の食事記録</SectionLabel>
+              <SLabel>本日の食事記録</SLabel>
               {hasLogs && <span style={{ fontSize: 10, color: "#555" }}>{todayLogs.length}件</span>}
             </div>
 
@@ -502,86 +641,51 @@ export default function Home() {
               <div style={{ textAlign: "center", padding: "20px 0" }}>
                 <p style={{ fontSize: 13, color: "#555", marginBottom: 6 }}>まだ食事が記録されていません</p>
                 <p style={{ fontSize: 11, color: "#444", marginBottom: 16 }}>下のボタンから記録を始めましょう</p>
-                {/* 空状態のクイックボタン */}
-                <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap" }}>
-                  <Link href="/food-scanner">
-                    <button style={quickBtnStyle("#4ade80")}>
-                      <Camera style={{ width: 12, height: 12 }} /> 食事を撮影
+                <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+                  {[
+                    { icon: <Camera style={{ width: 12, height: 12 }} />, label: "食事を撮影", color: "#4ade80", onClick: () => photoInputRef.current?.click() },
+                    { icon: <BarcodeIcon size={12} />, label: "バーコード", color: "#60a5fa", onClick: () => setShowScanner(true) },
+                    { icon: <span>✏️</span>, label: "手入力", color: "#a78bfa", onClick: () => setShowManualEntry(true) },
+                  ].map(({ icon, label, color, onClick }) => (
+                    <button key={label} onClick={onClick}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 5, background: `${color}18`, border: `1px solid ${color}40`, color, borderRadius: 10, padding: "7px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                      {icon}{label}
                     </button>
-                  </Link>
-                  <button onClick={() => setShowScanner(true)} style={quickBtnStyle("#60a5fa")}>
-                    <BarcodeIcon size={12} /> バーコード
-                  </button>
-                  <button onClick={() => setShowManualEntry(true)} style={quickBtnStyle("#a78bfa")}>
-                    ✏️ 手入力
-                  </button>
+                  ))}
                 </div>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {todayLogs.map((log) => {
-                  const pill  = MEAL_PILL_COLORS[log.mealType];
-                  const label = MEAL_LABELS[log.mealType]?.label ?? "食事";
-                  const icon  = SOURCE_ICONS[log.source ?? "photo"] ?? "🍽️";
+                  const pill  = MEAL_PILL[log.mealType];
+                  const label = MEAL_LABELS[log.mealType];
+                  const icon  = SOURCE_ICON[log.source ?? "photo"] ?? "🍽️";
                   const time  = new Date(log.loggedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
-
                   return (
-                    <div key={log.id} style={{
-                      background: "#0e0e15", borderRadius: 12, padding: "12px",
-                      border: "1px solid #1e1e28",
-                    }}>
+                    <div key={log.id} style={{ background: "#0e0e15", borderRadius: 12, padding: 12, border: "1px solid #1e1e28" }}>
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                        {/* Icon */}
-                        <div style={{
-                          width: 40, height: 40, borderRadius: 10,
-                          background: "#1a1a28", border: "1px solid #222",
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 18, flexShrink: 0,
-                        }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 10, background: "#1a1a28", border: "1px solid #222", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
                           {icon}
                         </div>
-
-                        {/* Info */}
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              {/* timing pill */}
-                              <span style={{
-                                fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999,
-                                background: pill.bg, color: pill.text,
-                              }}>
-                                {label}
-                              </span>
+                              <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: pill.bg, color: pill.text }}>{label}</span>
                               <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 10, color: "#555" }}>
                                 <Clock style={{ width: 9, height: 9 }} />{time}
                               </span>
                             </div>
-                            {/* calories */}
-                            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-                              {log.totalCalories} kcal
-                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{log.totalCalories} kcal</span>
                           </div>
-
-                          {/* meal name */}
-                          <p style={{ fontSize: 12, color: "#ccc", fontWeight: 500, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {log.mealName}
-                          </p>
-
-                          {/* PFC row */}
+                          <p style={{ fontSize: 12, color: "#ccc", fontWeight: 500, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{log.mealName}</p>
                           <div style={{ display: "flex", gap: 10 }}>
-                            {[
-                              { label: "P", value: log.totalProtein, color: "#4ade80" },
-                              { label: "F", value: log.totalFat,     color: "#fbbf24" },
-                              { label: "C", value: log.totalCarbs,   color: "#60a5fa" },
-                            ].map(({ label, value, color }) => (
-                              <span key={label} style={{ fontSize: 10, color: "#666" }}>
-                                <span style={{ color, fontWeight: 600 }}>{label}</span>: {value}g
+                            {[["P", "#4ade80", log.totalProtein], ["F", "#fbbf24", log.totalFat], ["C", "#60a5fa", log.totalCarbs]].map(([l, c, g]) => (
+                              <span key={l as string} style={{ fontSize: 10, color: "#666" }}>
+                                <span style={{ color: c as string, fontWeight: 600 }}>{l}</span>: {g}g
                               </span>
                             ))}
                             {log.healthScore > 0 && (
-                              <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600, marginLeft: "auto" }}>
-                                スコア {log.healthScore}
-                              </span>
+                              <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600, marginLeft: "auto" }}>スコア {log.healthScore}</span>
                             )}
                           </div>
                         </div>
@@ -595,40 +699,36 @@ export default function Home() {
         </motion.div>
       </div>
 
-      {/* ── FABs (3ボタン横並び) ── */}
+      {/* ── FABs: 3ボタン横並び ── */}
       <div style={{
-        position: "fixed", bottom: 84, left: 16, right: 16, zIndex: 50,
-        display: "flex", gap: 8,
+        position: "fixed", bottom: 88, left: 16, right: 16, zIndex: 60,
+        display: "flex", flexDirection: "row", gap: 8, alignItems: "stretch",
       }}>
-        {/* 食事を撮影 */}
-        <Link href="/food-scanner" style={{ flex: 2 }}>
-          <motion.button
-            whileTap={{ scale: 0.95 }}
-            style={{
-              width: "100%",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-              background: "#4ade80", color: "#000",
-              border: "none", borderRadius: 14,
-              padding: "13px 0", fontSize: 13, fontWeight: 700,
-              cursor: "pointer",
-              boxShadow: "0 0 20px #4ade8050",
-            }}
-          >
-            <Camera style={{ width: 15, height: 15 }} />
-            食事を撮影
-          </motion.button>
-        </Link>
+        {/* 📷 食事を撮影 */}
+        <motion.button
+          whileTap={{ scale: 0.95 }}
+          onClick={() => photoInputRef.current?.click()}
+          style={{
+            flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+            background: "#4ade80", color: "#000",
+            border: "none", borderRadius: 14,
+            padding: "14px 0", fontSize: 13, fontWeight: 700,
+            cursor: "pointer", boxShadow: "0 0 20px #4ade8050",
+          }}
+        >
+          <Camera style={{ width: 15, height: 15 }} />
+          食事を撮影
+        </motion.button>
 
-        {/* バーコード */}
+        {/* 🔲 バーコード */}
         <motion.button
           whileTap={{ scale: 0.95 }}
           onClick={() => setShowScanner(true)}
           style={{
-            flex: 1,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
             background: "#1e2a3a", color: "#60a5fa",
-            border: "1px solid #60a5fa40", borderRadius: 14,
-            padding: "13px 0", fontSize: 12, fontWeight: 700,
+            border: "1px solid #60a5fa50", borderRadius: 14,
+            padding: "14px 0", fontSize: 12, fontWeight: 700,
             cursor: "pointer",
           }}
         >
@@ -636,16 +736,15 @@ export default function Home() {
           バーコード
         </motion.button>
 
-        {/* 手入力 */}
+        {/* ✏️ 手入力 */}
         <motion.button
           whileTap={{ scale: 0.95 }}
           onClick={() => setShowManualEntry(true)}
           style={{
-            flex: 1,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
             background: "#1e1a2a", color: "#a78bfa",
-            border: "1px solid #a78bfa40", borderRadius: 14,
-            padding: "13px 0", fontSize: 12, fontWeight: 700,
+            border: "1px solid #a78bfa50", borderRadius: 14,
+            padding: "14px 0", fontSize: 12, fontWeight: 700,
             cursor: "pointer",
           }}
         >
@@ -656,43 +755,7 @@ export default function Home() {
   );
 }
 
-// ── button style helpers ──────────────────────────────────────────────────────
-const primaryBtnStyle: React.CSSProperties = {
-  flex: 2, padding: "13px", borderRadius: 12,
-  background: "#4ade80", border: "none",
-  color: "#000", fontSize: 13, fontWeight: 700, cursor: "pointer",
-};
-
-const secondaryBtnStyle: React.CSSProperties = {
-  flex: 1, padding: "13px", borderRadius: 12,
-  background: "#1e1e28", border: "1px solid #333",
-  color: "#aaa", fontSize: 13, fontWeight: 600, cursor: "pointer",
-};
-
-const outlineBtnStyle: React.CSSProperties = {
-  flex: 1, padding: "13px", borderRadius: 12,
-  background: "#4ade8015", border: "1px solid #4ade8040",
-  color: "#4ade80", fontSize: 13, fontWeight: 600, cursor: "pointer",
-};
-
-function quickBtnStyle(color: string): React.CSSProperties {
-  return {
-    display: "inline-flex", alignItems: "center", gap: 5,
-    background: `${color}18`, border: `1px solid ${color}40`,
-    color, borderRadius: 10, padding: "7px 12px",
-    fontSize: 12, fontWeight: 600, cursor: "pointer",
-  };
-}
-
-// ── Barcode result state type ────────────────────────────────────────────────
-interface BarcodeResultState {
-  found: boolean;
-  barcode?: string;
-  product?: {
-    name: string; brand: string; calories: number;
-    protein: number; fat: number; carbs: number;
-    fiber?: number; sodium?: number; image_url?: string;
-  };
-  aiAdvice?: string;
-  warning?: string;
-}
+// ── shared button styles ──────────────────────────────────────────────────────
+const priBtn: React.CSSProperties = { flex: 2, padding: "13px", borderRadius: 12, background: "#4ade80", border: "none", color: "#000", fontSize: 13, fontWeight: 700, cursor: "pointer" };
+const secBtn: React.CSSProperties = { flex: 1, padding: "13px", borderRadius: 12, background: "#1e1e28", border: "1px solid #333", color: "#aaa", fontSize: 13, fontWeight: 600, cursor: "pointer" };
+const outBtn: React.CSSProperties = { flex: 1, padding: "13px", borderRadius: 12, background: "#4ade8015", border: "1px solid #4ade8040", color: "#4ade80", fontSize: 13, fontWeight: 600, cursor: "pointer" };
