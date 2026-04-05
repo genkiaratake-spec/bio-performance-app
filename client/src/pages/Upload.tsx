@@ -1,528 +1,634 @@
-import DashboardLayout from "@/components/DashboardLayout";
-import { motion } from "framer-motion";
-import {
-  Upload as UploadIcon,
-  FileText,
-  CheckCircle2,
-  ArrowRight,
-  Info,
-  Lock,
-  AlertCircle,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useState, useCallback, useRef } from "react";
-import { Link } from "wouter";
-import { HealthCheckData } from "@/types/healthCheck";
+import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from "wouter";
+import {
+  Upload as UploadIcon, FileText, CheckCircle2,
+  AlertCircle, ChevronRight, Zap, ArrowLeft,
+} from "lucide-react";
 
-type UploadState = "idle" | "uploading" | "analyzing" | "complete" | "error";
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+interface Marker {
+  name: string;
+  value: string;
+  unit: string;
+  reference_range: string;
+  status: "ok" | "borderline" | "low";
+  note: string;
+}
 
-// ── ヘルパー ─────────────────────────────────────────────────────────────────
+interface Supplement {
+  name: string;
+  dosage: string;
+  timing: string;
+  reason: string;
+  priority: "high" | "normal";
+  monthly_cost: string;
+}
 
-function MetricCard({
-  label,
-  value,
-  unit,
-  isAbnormal,
-}: {
-  label: string;
-  value: number | null;
-  unit?: string;
-  isAbnormal: boolean;
-}) {
-  if (value === null) return null;
+interface AnalysisResult {
+  markers: Marker[];
+  overall_assessment: string;
+  supplements: Supplement[];
+  dietary_advice: string;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+const API_BASE = typeof window !== "undefined" && window.location.protocol === "capacitor:"
+  ? "https://bio-performance-app.vercel.app" : "";
+
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // data:xxx/xxx;base64,XXXXX → XXXXX のみ
+      resolve(result.split(",")[1]);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+const STATUS_CONFIG = {
+  ok:         { label: "正常",  color: "#4ade80", bg: "rgba(74,222,128,0.12)",  border: "rgba(74,222,128,0.3)" },
+  borderline: { label: "要注意", color: "#fbbf24", bg: "rgba(251,191,36,0.12)", border: "rgba(251,191,36,0.3)" },
+  low:        { label: "不足",  color: "#f87171", bg: "rgba(248,113,113,0.12)", border: "rgba(248,113,113,0.3)" },
+};
+
+const ANALYSIS_STEPS = [
+  "ファイルを読み込み中...",
+  "血液検査データを識別中...",
+  "バイオマーカーを解析中...",
+  "サプリメントを最適化中...",
+  "レポートを生成中...",
+];
+
+/* ------------------------------------------------------------------ */
+/*  Sub-components                                                     */
+/* ------------------------------------------------------------------ */
+function StepIndicator({ current, total }: { current: number; total: number }) {
   return (
-    <div
-      className="rounded-lg p-2.5"
-      style={{ background: isAbnormal ? "rgba(249,115,22,0.08)" : "rgba(255,255,255,0.04)" }}
-    >
-      <p className="text-[10px] text-gray-500 mb-0.5">{label}</p>
-      <p
-        className="text-sm font-bold"
-        style={{ color: isAbnormal ? "#f97316" : "#fff" }}
-      >
-        {value}
-        {unit && <span className="text-[10px] font-normal text-gray-500 ml-0.5">{unit}</span>}
-      </p>
+    <div className="flex items-center gap-2">
+      {Array.from({ length: total }).map((_, i) => (
+        <div
+          key={i}
+          style={{
+            height: 3, flex: 1, borderRadius: 999,
+            background: i < current ? "#4ade80" : "rgba(255,255,255,0.1)",
+            transition: "background 0.4s",
+          }}
+        />
+      ))}
     </div>
   );
 }
 
-// ── メインコンポーネント ───────────────────────────────────────────────────────
+function SectionCard({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ background: "#111118", border: "1px solid #222", borderRadius: 16, padding: "16px 18px", marginBottom: 12 }}>
+      {children}
+    </div>
+  );
+}
 
-export default function Upload() {
-  const [uploadState, setUploadState] = useState<UploadState>("idle");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [fileName, setFileName] = useState("");
-  const [analysisResult, setAnalysisResult] = useState<HealthCheckData | null>(null);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
+/* ------------------------------------------------------------------ */
+/*  Step 1: Welcome                                                    */
+/* ------------------------------------------------------------------ */
+function StepWelcome({ onNext }: { onNext: () => void }) {
+  return (
+    <motion.div
+      key="welcome"
+      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "70vh", textAlign: "center", gap: 0 }}
+    >
+      <div style={{ fontSize: 72, marginBottom: 24 }}>🔬</div>
+      <h1 style={{ fontSize: 22, fontWeight: 800, color: "#fff", marginBottom: 12, lineHeight: 1.3 }}>
+        AI血液検査解析
+      </h1>
+      <p style={{ fontSize: 14, color: "#888", lineHeight: 1.7, marginBottom: 32, maxWidth: 300 }}>
+        血液検査の結果をアップロードするだけで、AIがバイオマーカーを解析し、
+        あなた専用のサプリメント処方と食事アドバイスを生成します。
+      </p>
+
+      <div style={{ width: "100%", maxWidth: 340, marginBottom: 32 }}>
+        {[
+          { icon: "📋", text: "PDF・JPG・PNG に対応" },
+          { icon: "🤖", text: "Claude AIによる高精度解析" },
+          { icon: "💊", text: "パーソナライズされたサプリ処方" },
+          { icon: "🔒", text: "解析後データは削除されます" },
+        ].map((item) => (
+          <div key={item.text} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #1a1a28" }}>
+            <span style={{ fontSize: 18, width: 28, textAlign: "center" }}>{item.icon}</span>
+            <span style={{ fontSize: 13, color: "#aaa" }}>{item.text}</span>
+          </div>
+        ))}
+      </div>
+
+      <button
+        onClick={onNext}
+        style={{
+          width: "100%", maxWidth: 340, padding: "15px", borderRadius: 14,
+          background: "#4ade80", color: "#000", fontWeight: 700, fontSize: 15,
+          border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}
+      >
+        はじめる <ChevronRight size={18} />
+      </button>
+    </motion.div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Step 2: Upload + Questionnaire                                     */
+/* ------------------------------------------------------------------ */
+function StepUpload({
+  onAnalyze,
+  onBack,
+}: {
+  onAnalyze: (file: File, healthGoal: string, exercise: string, dietStyle: string) => void;
+  onBack: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [healthGoal, setHealthGoal] = useState("");
+  const [exercise, setExercise] = useState("");
+  const [dietStyle, setDietStyle] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const FILE_INPUT_ID = "health-check-file-input";
+  const FILE_INPUT_ID = "blood-test-file-input";
 
-  const analyzeFile = useCallback(async (file: File) => {
-    setFileName(file.name);
-    setIsAnalyzing(true);
-    setAnalysisError(null);
-    setAnalysisResult(null);
-    setUploadState("analyzing");
-
-    try {
-      console.log('Uploading file:', file.name, file.type, file.size);
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 55000);
-
-      const API_BASE = typeof window !== 'undefined' &&
-        window.location.protocol === 'capacitor:'
-          ? 'https://bio-performance-app.vercel.app'
-          : '';
-
-      const response = await fetch(`${API_BASE}/api/analyze-health-check`, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      console.log('Response status:', response.status);
-
-      const text = await response.text();
-      console.log('Response text:', text.substring(0, 500));
-
-      let result;
-      try {
-        result = JSON.parse(text);
-      } catch {
-        setAnalysisError('レスポンスの解析に失敗しました: ' + text.substring(0, 100));
-        setUploadState('error');
-        return;
-      }
-
-      if (result.success) {
-        setAnalysisResult(result.data);
-        localStorage.setItem('healthCheckData', JSON.stringify(result.data));
-        setUploadState('complete');
-      } else {
-        setAnalysisError(result.error || result.detail || '解析に失敗しました');
-        setUploadState('error');
-      }
-    } catch (err) {
-      console.error('Fetch error:', err);
-      if (err instanceof Error && err.name === 'AbortError') {
-        setAnalysisError('解析がタイムアウトしました。PDFのサイズを小さくしてお試しください。');
-      } else {
-        const detail = err instanceof Error ? err.message : String(err);
-        setAnalysisError('通信エラーが発生しました: ' + detail);
-      }
-      setUploadState('error');
-    } finally {
-      setIsAnalyzing(false);
+  const handleFile = useCallback((f: File) => {
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
+    if (!allowed.includes(f.type) && !f.name.match(/\.(pdf|jpg|jpeg|png)$/i)) {
+      alert("PDF・JPG・PNG ファイルのみ対応しています");
+      return;
     }
+    setFile(f);
   }, []);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      const file = e.dataTransfer.files[0];
-      if (file) analyzeFile(file);
-    },
-    [analyzeFile]
-  );
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const f = e.dataTransfer.files[0];
+    if (f) handleFile(f);
+  }, [handleFile]);
 
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (file) {
-        console.log('File selected:', file.name, file.type, file.size, 'bytes');
-        analyzeFile(file);
-      }
-    },
-    [analyzeFile]
-  );
+  const canSubmit = !!file;
 
-  const handleReset = () => {
-    setUploadState("idle");
-    setFileName("");
-    setAnalysisResult(null);
-    setAnalysisError(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const abnormalSet = new Set(analysisResult?.abnormalFlags ?? []);
+  const GOAL_OPTIONS   = ["体重管理・ダイエット", "筋肉増強・パフォーマンス向上", "疲労改善・エネルギーアップ", "健康維持・予防", "その他"];
+  const EX_OPTIONS     = ["ほぼしない", "週1〜2回", "週3〜4回", "毎日"];
+  const DIET_OPTIONS   = ["バランス食", "低糖質", "高タンパク", "植物性中心", "特になし"];
 
   return (
-    <DashboardLayout>
-      <div className="max-w-2xl mx-auto">
+    <motion.div
+      key="upload"
+      initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }}
+    >
+      <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 6, color: "#666", fontSize: 13, background: "none", border: "none", cursor: "pointer", marginBottom: 20 }}>
+        <ArrowLeft size={15} /> 戻る
+      </button>
 
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-          <p className="stat-label mb-1">Data Integration</p>
-          <h1 className="text-2xl lg:text-3xl font-bold">健康データを登録</h1>
-          <p className="text-sm text-muted-foreground mt-1.5">
-            健康診断・人間ドックの結果をアップロードして、パーソナライズ食事アドバイスを始めましょう。
-          </p>
-        </motion.div>
+      <h2 style={{ fontSize: 19, fontWeight: 700, color: "#fff", marginBottom: 4 }}>健康診断データをアップロード</h2>
+      <p style={{ fontSize: 12, color: "#666", marginBottom: 20 }}>PDF・JPG・PNG に対応</p>
 
-        {/* 対応している健診バッジ */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.04 }}
-          className="elevated-card rounded-xl p-4 mb-4"
-        >
-          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2.5">
-            対応している健診
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {["協会けんぽ", "企業健診", "自治体特定健診", "人間ドック"].map((label) => (
-              <span
-                key={label}
-                className="text-[11px] font-semibold px-3 py-1 rounded-full"
+      {/* Drop zone */}
+      <label
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+        style={{
+          display: "block", position: "relative",
+          border: file ? "2px solid #4ade80" : "2px dashed #333",
+          borderRadius: 14, padding: "28px 20px", textAlign: "center",
+          cursor: "pointer", marginBottom: 20,
+          background: file ? "rgba(74,222,128,0.06)" : "#0e0e15",
+          transition: "all 0.2s",
+        }}
+      >
+        <input
+          id={FILE_INPUT_ID}
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.jpg,.jpeg,.png"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+          style={{ position: "absolute", width: 1, height: 1, opacity: 0, overflow: "hidden", top: 0, left: 0 }}
+        />
+        {file ? (
+          <>
+            <CheckCircle2 size={32} style={{ color: "#4ade80", margin: "0 auto 10px" }} />
+            <p style={{ fontSize: 13, color: "#4ade80", fontWeight: 600, marginBottom: 4 }}>{file.name}</p>
+            <p style={{ fontSize: 11, color: "#555" }}>{(file.size / 1024).toFixed(0)} KB · タップして変更</p>
+          </>
+        ) : (
+          <>
+            <UploadIcon size={32} style={{ color: "#444", margin: "0 auto 12px" }} />
+            <p style={{ fontSize: 13, color: "#888", marginBottom: 4 }}>タップしてファイルを選択</p>
+            <p style={{ fontSize: 11, color: "#555" }}>またはドラッグ＆ドロップ</p>
+          </>
+        )}
+      </label>
+
+      {/* Questionnaire */}
+      <SectionCard>
+        <p style={{ fontSize: 11, color: "#555", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 14 }}>健康情報（任意・精度向上）</p>
+
+        <div style={{ marginBottom: 14 }}>
+          <p style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>健康ゴール</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {GOAL_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                onClick={() => setHealthGoal(healthGoal === opt ? "" : opt)}
                 style={{
-                  background: "rgba(74,222,128,0.12)",
-                  color: "#4ade80",
-                  border: "1px solid rgba(74,222,128,0.25)",
+                  padding: "6px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600,
+                  background: healthGoal === opt ? "rgba(74,222,128,0.15)" : "#1a1a28",
+                  border: `1px solid ${healthGoal === opt ? "#4ade80" : "#2a2a38"}`,
+                  color: healthGoal === opt ? "#4ade80" : "#777",
+                  cursor: "pointer",
                 }}
               >
-                {label}
-              </span>
+                {opt}
+              </button>
             ))}
           </div>
-        </motion.div>
+        </div>
 
-        {/* アップロードカード */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.08 }}
-          className={`elevated-card rounded-xl p-5 mb-3 transition-all ${
-            uploadState === "complete" ? "ring-1 ring-teal/30" : ""
-          }`}
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-9 h-9 rounded-lg bg-teal/10 flex items-center justify-center text-lg shrink-0">
-              📋
-            </div>
-            <div className="flex-1">
-              <h3 className="text-sm font-bold">健康診断・人間ドック結果</h3>
-              <p className="text-[11px] text-muted-foreground mt-0.5">
-                PDF・jpg・png に対応
-              </p>
-            </div>
-            {uploadState === "complete" && (
-              <CheckCircle2 className="w-4 h-4 text-teal shrink-0" />
-            )}
-          </div>
-
-          {/* idle */}
-          {(uploadState === "idle" || uploadState === "error") && (
-            <label
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleDrop}
-              className="block border border-dashed border-border rounded-xl p-8 text-center hover:border-primary/40 transition-colors cursor-pointer group relative"
-            >
-              {/* input を label 内に配置 - Safari が最も確実にトリガーできる構造 */}
-              <input
-                id={FILE_INPUT_ID}
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={handleFileChange}
-                style={{
-                  position: "absolute",
-                  width: "1px",
-                  height: "1px",
-                  opacity: 0,
-                  overflow: "hidden",
-                  top: 0,
-                  left: 0,
-                }}
-              />
-              <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center mx-auto mb-3 group-hover:bg-primary/10 transition-colors">
-                <UploadIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
-              </div>
-              <p className="text-xs text-muted-foreground mb-0.5">
-                PDF・画像（jpg/png）をドラッグ＆ドロップ
-              </p>
-              <p className="text-[10px] text-muted-foreground/60">
-                またはタップしてファイルを選択
-              </p>
-              {uploadState === "error" && analysisError && (
-                <div className="mt-3 flex items-center justify-center gap-1.5 text-[11px] text-orange-400">
-                  <AlertCircle className="w-3 h-3" />
-                  {analysisError}
-                </div>
-              )}
-            </label>
-          )}
-
-          {/* uploading */}
-          {uploadState === "uploading" && (
-            <div className="border border-border rounded-xl p-8 text-center">
-              <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-              <p className="text-xs font-semibold">アップロード中...</p>
-              <p
-                className="text-[10px] text-muted-foreground mt-1"
-                style={{ fontFamily: "var(--font-mono)" }}
-              >
-                {fileName}
-              </p>
-            </div>
-          )}
-
-          {/* analyzing */}
-          {uploadState === "analyzing" && (
-            <div className="border border-amber/20 rounded-xl p-8 text-center">
-              <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-amber border-t-transparent animate-spin" />
-              <p className="text-xs font-semibold text-amber">AIが健康診断を解析中です...</p>
-              <p className="text-[10px] text-muted-foreground mt-1">
-                30秒ほどかかる場合があります
-              </p>
-            </div>
-          )}
-
-          {/* complete */}
-          {uploadState === "complete" && (
-            <div className="border border-teal/20 rounded-xl p-8 text-center">
-              <CheckCircle2 className="w-8 h-8 mx-auto mb-3 text-teal" />
-              <p className="text-xs font-semibold text-teal">解析完了</p>
-              <p
-                className="text-[10px] text-muted-foreground mt-1"
-                style={{ fontFamily: "var(--font-mono)" }}
-              >
-                {fileName}
-              </p>
+        <div style={{ marginBottom: 14 }}>
+          <p style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>運動習慣</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {EX_OPTIONS.map((opt) => (
               <button
-                onClick={handleReset}
-                className="mt-3 text-[10px] text-muted-foreground/60 underline underline-offset-2"
+                key={opt}
+                onClick={() => setExercise(exercise === opt ? "" : opt)}
+                style={{
+                  padding: "6px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600,
+                  background: exercise === opt ? "rgba(74,222,128,0.15)" : "#1a1a28",
+                  border: `1px solid ${exercise === opt ? "#4ade80" : "#2a2a38"}`,
+                  color: exercise === opt ? "#4ade80" : "#777",
+                  cursor: "pointer",
+                }}
               >
-                別のファイルをアップロード
+                {opt}
               </button>
-            </div>
-          )}
-        </motion.div>
+            ))}
+          </div>
+        </div>
 
-        {/* ── 解析結果 ── */}
-        {uploadState === "complete" && analysisResult && (
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
-            className="space-y-3 mb-4"
-          >
-            {/* 総合評価カード */}
-            <div className="elevated-card rounded-xl p-5">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-1">
-                    総合評価
-                  </p>
-                  <p className="text-4xl font-bold text-teal leading-none">
-                    {analysisResult.overallRating ?? "―"}
-                  </p>
-                  {analysisResult.checkupDate && (
-                    <p className="text-[11px] text-muted-foreground mt-1">
-                      検診日: {analysisResult.checkupDate}
-                    </p>
-                  )}
-                </div>
-                <CheckCircle2 className="w-5 h-5 text-teal mt-1" />
+        <div>
+          <p style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>食事スタイル</p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+            {DIET_OPTIONS.map((opt) => (
+              <button
+                key={opt}
+                onClick={() => setDietStyle(dietStyle === opt ? "" : opt)}
+                style={{
+                  padding: "6px 12px", borderRadius: 999, fontSize: 11, fontWeight: 600,
+                  background: dietStyle === opt ? "rgba(74,222,128,0.15)" : "#1a1a28",
+                  border: `1px solid ${dietStyle === opt ? "#4ade80" : "#2a2a38"}`,
+                  color: dietStyle === opt ? "#4ade80" : "#777",
+                  cursor: "pointer",
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+          </div>
+        </div>
+      </SectionCard>
+
+      <button
+        onClick={() => canSubmit && onAnalyze(file!, healthGoal, exercise, dietStyle)}
+        disabled={!canSubmit}
+        style={{
+          width: "100%", padding: "15px", borderRadius: 14, marginTop: 8,
+          background: canSubmit ? "#4ade80" : "#1a1a28",
+          color: canSubmit ? "#000" : "#444",
+          fontWeight: 700, fontSize: 15, border: "none",
+          cursor: canSubmit ? "pointer" : "not-allowed",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          transition: "all 0.2s",
+        }}
+      >
+        <Zap size={16} />
+        AI解析を開始する
+      </button>
+
+      <p style={{ fontSize: 11, color: "#444", textAlign: "center", marginTop: 12 }}>
+        ※ データはAI解析後に削除されます
+      </p>
+    </motion.div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Step 3: Analyzing                                                  */
+/* ------------------------------------------------------------------ */
+function StepAnalyzing({ currentStep }: { currentStep: number }) {
+  return (
+    <motion.div
+      key="analyzing"
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "70vh", textAlign: "center" }}
+    >
+      {/* Spinner */}
+      <div style={{ position: "relative", width: 72, height: 72, marginBottom: 28 }}>
+        <div style={{ position: "absolute", inset: 0, border: "4px solid rgba(74,222,128,0.15)", borderRadius: "50%" }} />
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
+          style={{
+            position: "absolute", inset: 0,
+            border: "4px solid transparent", borderTopColor: "#4ade80",
+            borderRadius: "50%",
+          }}
+        />
+        <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>
+          🔬
+        </div>
+      </div>
+
+      <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>AI解析中...</h2>
+      <p style={{ fontSize: 13, color: "#555", marginBottom: 32 }}>30秒ほどかかる場合があります</p>
+
+      {/* Step list */}
+      <div style={{ width: "100%", maxWidth: 320 }}>
+        {ANALYSIS_STEPS.map((label, i) => {
+          const done    = i < currentStep;
+          const active  = i === currentStep;
+          return (
+            <motion.div
+              key={label}
+              initial={{ opacity: 0, x: -16 }}
+              animate={{ opacity: done || active ? 1 : 0.3, x: 0 }}
+              transition={{ delay: i * 0.15 }}
+              style={{ display: "flex", alignItems: "center", gap: 12, padding: "9px 0", borderBottom: "1px solid #1a1a28" }}
+            >
+              <div style={{
+                width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+                background: done ? "#4ade80" : active ? "rgba(74,222,128,0.2)" : "#1a1a28",
+                border: active ? "2px solid #4ade80" : "none",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 11,
+              }}>
+                {done ? "✓" : active ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }} style={{ width: 8, height: 8, borderRadius: 2, background: "#4ade80" }} /> : ""}
               </div>
+              <span style={{ fontSize: 12, color: done ? "#4ade80" : active ? "#fff" : "#444", fontWeight: active ? 600 : 400 }}>
+                {label}
+              </span>
+            </motion.div>
+          );
+        })}
+      </div>
+    </motion.div>
+  );
+}
 
-              {analysisResult.doctorComment && (
-                <p className="text-[12px] text-muted-foreground leading-relaxed mb-3 border-t border-border/40 pt-3">
-                  {analysisResult.doctorComment}
-                </p>
-              )}
+/* ------------------------------------------------------------------ */
+/*  Step 4: Results                                                    */
+/* ------------------------------------------------------------------ */
+function StepResults({ result, onReset }: { result: AnalysisResult; onReset: () => void }) {
+  const okCount         = result.markers.filter((m) => m.status === "ok").length;
+  const borderlineCount = result.markers.filter((m) => m.status === "borderline").length;
+  const lowCount        = result.markers.filter((m) => m.status === "low").length;
 
-              {/* 異常フラグ */}
-              {abnormalSet.size > 0 && (
-                <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">
-                    基準値外の項目
+  return (
+    <motion.div key="results" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+        <div>
+          <h2 style={{ fontSize: 19, fontWeight: 700, color: "#fff", marginBottom: 2 }}>解析レポート</h2>
+          <p style={{ fontSize: 11, color: "#555" }}>AIによる血液検査解析結果</p>
+        </div>
+        <button
+          onClick={onReset}
+          style={{ fontSize: 12, color: "#666", background: "#1a1a28", border: "1px solid #2a2a38", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}
+        >
+          再検査
+        </button>
+      </div>
+
+      {/* Summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+        {[
+          { label: "正常", count: okCount,         color: "#4ade80" },
+          { label: "要注意", count: borderlineCount, color: "#fbbf24" },
+          { label: "不足", count: lowCount,          color: "#f87171" },
+        ].map(({ label, count, color }) => (
+          <div key={label} style={{ background: "#111118", border: "1px solid #222", borderRadius: 12, padding: "12px 8px", textAlign: "center" }}>
+            <p style={{ fontSize: 22, fontWeight: 800, color, marginBottom: 2 }}>{count}</p>
+            <p style={{ fontSize: 10, color: "#666" }}>{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Overall assessment */}
+      <SectionCard>
+        <p style={{ fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>総合評価</p>
+        <p style={{ fontSize: 13, color: "#ccc", lineHeight: 1.7 }}>{result.overall_assessment}</p>
+      </SectionCard>
+
+      {/* Biomarkers */}
+      <SectionCard>
+        <p style={{ fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 12 }}>バイオマーカー</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {result.markers.map((m, i) => {
+            const sc = STATUS_CONFIG[m.status] ?? STATUS_CONFIG.ok;
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.04 }}
+                style={{ display: "flex", alignItems: "center", padding: "10px 0", borderBottom: i < result.markers.length - 1 ? "1px solid #1a1a28" : "none", gap: 10 }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 12, fontWeight: 600, color: "#fff", marginBottom: 2 }}>{m.name}</p>
+                  {m.note && <p style={{ fontSize: 10, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.note}</p>}
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
+                    {m.value} <span style={{ fontSize: 10, color: "#555", fontWeight: 400 }}>{m.unit}</span>
                   </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[...abnormalSet].map((flag) => (
-                      <span
-                        key={flag}
-                        className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                        style={{
-                          background: "rgba(249,115,22,0.12)",
-                          color: "#f97316",
-                          border: "1px solid rgba(249,115,22,0.3)",
-                        }}
-                      >
-                        {flag}
-                      </span>
-                    ))}
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 999,
+                    background: sc.bg, color: sc.color, border: `1px solid ${sc.border}`,
+                  }}>
+                    {sc.label}
+                  </span>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </SectionCard>
+
+      {/* Supplements */}
+      {result.supplements.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <p style={{ fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10, padding: "0 2px" }}>
+            サプリメント処方
+          </p>
+          {result.supplements.map((s, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 + i * 0.07 }}
+              style={{
+                background: "#111118", border: `1px solid ${s.priority === "high" ? "rgba(249,115,22,0.3)" : "#222"}`,
+                borderRadius: 14, padding: "14px 16px", marginBottom: 8,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{s.name}</span>
+                {s.priority === "high" && (
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 7px", borderRadius: 999, background: "rgba(249,115,22,0.15)", color: "#f97316", border: "1px solid rgba(249,115,22,0.3)" }}>
+                    優先
+                  </span>
+                )}
+              </div>
+              <p style={{ fontSize: 12, color: "#999", lineHeight: 1.6, marginBottom: 10 }}>{s.reason}</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                {[
+                  { label: "用量", value: s.dosage },
+                  { label: "タイミング", value: s.timing },
+                  { label: "月額目安", value: s.monthly_cost },
+                ].map(({ label, value }) => (
+                  <div key={label} style={{ background: "#0e0e15", borderRadius: 8, padding: "8px 10px" }}>
+                    <p style={{ fontSize: 9, color: "#555", marginBottom: 3 }}>{label}</p>
+                    <p style={{ fontSize: 11, fontWeight: 600, color: "#ccc" }}>{value}</p>
                   </div>
-                </div>
-              )}
-            </div>
-
-            {/* 数値一覧カード */}
-            <div className="elevated-card rounded-xl p-5">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">
-                検査数値
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                <MetricCard label="BMI" value={analysisResult.bmi} isAbnormal={abnormalSet.has("BMI")} />
-                <MetricCard
-                  label="血圧（収/拡）"
-                  value={
-                    analysisResult.bloodPressureSystolic !== null &&
-                    analysisResult.bloodPressureDiastolic !== null
-                      ? Number(
-                          `${analysisResult.bloodPressureSystolic}.${String(analysisResult.bloodPressureDiastolic).padStart(2, "0")}`
-                        )
-                      : null
-                  }
-                  isAbnormal={abnormalSet.has("血圧")}
-                />
-                <MetricCard
-                  label="総コレステロール"
-                  value={analysisResult.totalCholesterol}
-                  unit="mg/dL"
-                  isAbnormal={abnormalSet.has("総コレステロール")}
-                />
-                <MetricCard
-                  label="LDL"
-                  value={analysisResult.ldlCholesterol}
-                  unit="mg/dL"
-                  isAbnormal={abnormalSet.has("LDL") || abnormalSet.has("LDLコレステロール")}
-                />
-                <MetricCard
-                  label="HDL"
-                  value={analysisResult.hdlCholesterol}
-                  unit="mg/dL"
-                  isAbnormal={abnormalSet.has("HDL") || abnormalSet.has("HDLコレステロール")}
-                />
-                <MetricCard
-                  label="中性脂肪"
-                  value={analysisResult.triglycerides}
-                  unit="mg/dL"
-                  isAbnormal={abnormalSet.has("中性脂肪")}
-                />
-                <MetricCard
-                  label="血糖値"
-                  value={analysisResult.bloodSugar}
-                  unit="mg/dL"
-                  isAbnormal={abnormalSet.has("血糖値") || abnormalSet.has("血糖")}
-                />
-                <MetricCard
-                  label="HbA1c"
-                  value={analysisResult.hba1c}
-                  unit="%"
-                  isAbnormal={abnormalSet.has("HbA1c")}
-                />
-                <MetricCard
-                  label="γ-GTP"
-                  value={analysisResult.gammaGtp}
-                  unit="U/L"
-                  isAbnormal={abnormalSet.has("γ-GTP") || abnormalSet.has("γGTP")}
-                />
-                <MetricCard
-                  label="ヘモグロビン"
-                  value={analysisResult.hemoglobin}
-                  unit="g/dL"
-                  isAbnormal={abnormalSet.has("ヘモグロビン")}
-                />
-                {analysisResult.vitaminD !== null && (
-                  <MetricCard
-                    label="ビタミンD"
-                    value={analysisResult.vitaminD}
-                    unit="ng/mL"
-                    isAbnormal={abnormalSet.has("ビタミンD")}
-                  />
-                )}
-                {analysisResult.crp !== null && (
-                  <MetricCard
-                    label="CRP"
-                    value={analysisResult.crp}
-                    unit="mg/L"
-                    isAbnormal={abnormalSet.has("CRP")}
-                  />
-                )}
+                ))}
               </div>
-            </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
 
-            {/* アクションボタン */}
-            <div className="grid grid-cols-2 gap-3">
-              <Link href="/">
-                <button
-                  className="w-full py-3 rounded-xl text-sm font-semibold text-black transition-colors"
-                  style={{ background: "#4ade80" }}
-                >
-                  食事スコアに反映する
-                </button>
-              </Link>
-              <Link href="/supplements">
-                <button className="w-full py-3 rounded-xl bg-secondary text-sm font-semibold text-muted-foreground hover:bg-secondary/80 transition-colors">
-                  サプリ提案を見る <ArrowRight className="inline w-3.5 h-3.5 ml-1" />
-                </button>
-              </Link>
-            </div>
+      {/* Dietary advice */}
+      {result.dietary_advice && (
+        <SectionCard>
+          <p style={{ fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 10 }}>食事アドバイス</p>
+          <p style={{ fontSize: 13, color: "#ccc", lineHeight: 1.7 }}>{result.dietary_advice}</p>
+        </SectionCard>
+      )}
+
+      <p style={{ fontSize: 11, color: "#444", textAlign: "center", marginTop: 8, marginBottom: 4 }}>
+        ※ AIによる解析結果です。医療上の診断ではありません。
+      </p>
+    </motion.div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main                                                               */
+/* ------------------------------------------------------------------ */
+type Step = "welcome" | "upload" | "analyzing" | "results" | "error";
+
+export default function Upload() {
+  const [, navigate] = useLocation();
+  const [step, setStep] = useState<Step>("welcome");
+  const [analyzeStep, setAnalyzeStep] = useState(0);
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const handleAnalyze = async (file: File, healthGoal: string, exercise: string, dietStyle: string) => {
+    setStep("analyzing");
+    setAnalyzeStep(0);
+
+    // Step animation
+    const timer = setInterval(() => {
+      setAnalyzeStep((prev) => {
+        if (prev >= ANALYSIS_STEPS.length - 1) { clearInterval(timer); return prev; }
+        return prev + 1;
+      });
+    }, 5000);
+
+    try {
+      const fileBase64 = await fileToBase64(file);
+      const mediaType  = file.type || (file.name.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
+
+      const res = await fetch(`${API_BASE}/api/analyze-blood-test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileBase64, mediaType, healthGoal, exercise, dietStyle }),
+      });
+
+      clearInterval(timer);
+      setAnalyzeStep(ANALYSIS_STEPS.length - 1);
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        // 既存 healthCheckData 形式にも保存（他画面との互換性）
+        localStorage.setItem("healthCheckData", JSON.stringify(json.data));
+        setTimeout(() => {
+          setResult(json.data);
+          setStep("results");
+        }, 600);
+      } else {
+        throw new Error(json.error || "解析に失敗しました");
+      }
+    } catch (err) {
+      clearInterval(timer);
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(msg);
+      setStep("error");
+    }
+  };
+
+  const currentStep = step === "welcome" ? 1 : step === "upload" ? 2 : step === "analyzing" ? 3 : 4;
+
+  return (
+    <div
+      style={{
+        height: "100vh", overflowY: "auto", WebkitOverflowScrolling: "touch",
+        background: "#0a0a0f", color: "#fff", padding: "52px 20px 100px",
+      }}
+    >
+      {/* Step indicator */}
+      <div style={{ marginBottom: 28 }}>
+        <StepIndicator current={currentStep} total={4} />
+      </div>
+
+      <AnimatePresence mode="wait">
+
+        {step === "welcome" && (
+          <StepWelcome key="welcome" onNext={() => setStep("upload")} />
+        )}
+
+        {step === "upload" && (
+          <StepUpload key="upload" onAnalyze={handleAnalyze} onBack={() => setStep("welcome")} />
+        )}
+
+        {step === "analyzing" && (
+          <StepAnalyzing key="analyzing" currentStep={analyzeStep} />
+        )}
+
+        {step === "results" && result && (
+          <StepResults key="results" result={result} onReset={() => { setResult(null); setStep("upload"); }} />
+        )}
+
+        {step === "error" && (
+          <motion.div
+            key="error"
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", textAlign: "center" }}
+          >
+            <AlertCircle size={52} style={{ color: "#f87171", marginBottom: 20 }} />
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: "#fff", marginBottom: 8 }}>解析に失敗しました</h2>
+            <p style={{ fontSize: 13, color: "#888", marginBottom: 28, maxWidth: 280, lineHeight: 1.6 }}>{errorMsg}</p>
+            <button
+              onClick={() => { setErrorMsg(""); setStep("upload"); }}
+              style={{
+                padding: "13px 32px", borderRadius: 12, background: "#4ade80",
+                color: "#000", fontWeight: 700, fontSize: 14, border: "none", cursor: "pointer",
+              }}
+            >
+              やり直す
+            </button>
           </motion.div>
         )}
 
-        {/* 対応フォーマット */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="elevated-card rounded-xl p-5 mb-4"
-        >
-          <h3 className="text-xs font-bold mb-3">対応フォーマット</h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {[
-              { ext: "PDF", desc: "検査結果レポート" },
-              { ext: "JPG/PNG", desc: "スキャン画像" },
-            ].map((fmt) => (
-              <div key={fmt.ext} className="flex items-center gap-2 p-2.5 rounded-lg bg-card">
-                <FileText className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
-                <div>
-                  <p
-                    className="text-[11px] font-semibold"
-                    style={{ fontFamily: "var(--font-mono)" }}
-                  >
-                    {fmt.ext}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">{fmt.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
-
-        {/* プライバシー */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.24 }}
-          className="elevated-card rounded-xl p-4 mb-4 flex items-start gap-3"
-          style={{ borderColor: "rgba(74,222,128,0.15)" }}
-        >
-          <Lock className="w-4 h-4 text-teal mt-0.5 shrink-0" />
-          <div>
-            <p className="text-xs font-semibold text-foreground mb-1">データの安全性</p>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">
-              アップロードされたデータは端末内にのみ保存され、第三者に共有されることはありません。
-              食事アドバイスの生成のみに使用されます。
-            </p>
-          </div>
-        </motion.div>
-
-        {/* Disclaimer */}
-        <div className="flex items-start gap-2 text-[11px] text-muted-foreground pb-4">
-          <Info className="w-3 h-3 mt-0.5 shrink-0" />
-          <p>
-            ※本サービスは食事アドバイスを目的とするものであり、医療上の診断・処方ではありません。
-            体調に不安がある場合は必ず医療機関にご相談ください。
-          </p>
-        </div>
-      </div>
-    </DashboardLayout>
+      </AnimatePresence>
+    </div>
   );
 }

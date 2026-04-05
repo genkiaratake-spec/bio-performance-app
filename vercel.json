@@ -19,6 +19,9 @@
     },
     "api/analyze-supplements.ts": {
       "maxDuration": 30
+    },
+    "api/analyze-blood-test.ts": {
+      "maxDuration": 60
     }
   }
 }
