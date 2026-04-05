@@ -84,20 +84,33 @@ function TagButton({ label, selected, onClick }: { label: string; selected: bool
   );
 }
 
-function NumberInput({ label, unit, value, onChange, placeholder }: {
-  label: string; unit: string; value: string; onChange: (v: string) => void; placeholder: string;
+function NumberInput({ label, unit, value, onBlur, placeholder, inputMode = 'decimal' }: {
+  label: string; unit: string; value: string;
+  onBlur: (v: string) => void; placeholder: string;
+  inputMode?: 'numeric' | 'decimal';
 }) {
   return (
     <div className="bg-[#111118] border border-white/10 rounded-2xl p-4">
       <p className="text-gray-400 text-xs mb-2">{label}</p>
       <div className="flex items-end gap-2">
         <input
-          type="number"
-          value={value}
-          onChange={e => onChange(e.target.value)}
+          type="text"
+          inputMode={inputMode}
+          pattern="[0-9]*"
+          defaultValue={value}
+          onBlur={e => {
+            const cleaned = e.target.value.replace(/[^0-9.]/g, '');
+            onBlur(cleaned);
+          }}
+          onChange={e => {
+            e.target.value = e.target.value.replace(/[^0-9.]/g, '');
+          }}
           placeholder={placeholder}
           className="flex-1 bg-transparent text-white text-3xl font-bold focus:outline-none placeholder:text-white/20"
-          inputMode="decimal"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
         />
         <span className="text-gray-400 text-sm pb-1">{unit}</span>
       </div>
@@ -120,6 +133,12 @@ export default function Onboarding() {
     dietaryRestrictions: [], dislikedFoods: [], cuisineType: '', eatingOutFrequency: '', cookingTime: '',
     dailyCalories: '', dailyProtein: '', dailyFat: '', dailyCarbs: '',
   });
+
+  // iOS onBlur パターン用ローカル state（canNext の判定に使用）
+  const [localYear, setLocalYear] = useState('');
+  const [localHeight, setLocalHeight] = useState('');
+  const [localWeight, setLocalWeight] = useState('');
+  const [localTargetWeight, setLocalTargetWeight] = useState('');
 
   const progress = (step / TOTAL) * 100;
   const next = () => step < TOTAL ? setStep(s => s + 1) : finish();
@@ -357,14 +376,18 @@ export default function Onboarding() {
 
   /* -- 7: 生まれ年 -- */
   if (step === 7) return (
-    <Layout canNext={data.birthYear.length === 4 && parseInt(data.birthYear) > 1920}>
+    <Layout canNext={localYear.length === 4 && parseInt(localYear) > 1920}>
       <div className="pt-4">
         <p className="text-green-400 text-xs font-semibold mb-2">基本プロフィール</p>
         <h2 className="text-xl font-bold text-white mb-6">生まれ年を入力してください</h2>
-        <NumberInput label="生まれ年" unit="年" value={data.birthYear} onChange={v => set('birthYear', v)} placeholder="1990" />
-        {data.birthYear.length === 4 && (
-          <p className="text-gray-400 text-sm mt-3 text-center">
-            {new Date().getFullYear() - parseInt(data.birthYear)} 歳
+        <NumberInput
+          label="生まれ年" unit="年" value={data.birthYear}
+          onBlur={v => { setLocalYear(v); set('birthYear', v); }}
+          placeholder="1990" inputMode="numeric"
+        />
+        {localYear.length === 4 && (
+          <p className="text-green-400 text-sm mt-3 text-center">
+            {new Date().getFullYear() - parseInt(localYear)} 歳
           </p>
         )}
       </div>
@@ -373,25 +396,33 @@ export default function Onboarding() {
 
   /* -- 8: 身長 -- */
   if (step === 8) return (
-    <Layout canNext={parseFloat(data.height) > 100}>
+    <Layout canNext={parseFloat(localHeight) > 100}>
       <div className="pt-4">
         <p className="text-green-400 text-xs font-semibold mb-2">基本プロフィール</p>
         <h2 className="text-xl font-bold text-white mb-6">身長を入力してください</h2>
-        <NumberInput label="身長" unit="cm" value={data.height} onChange={v => set('height', v)} placeholder="170" />
+        <NumberInput
+          label="身長" unit="cm" value={data.height}
+          onBlur={v => { setLocalHeight(v); set('height', v); }}
+          placeholder="170"
+        />
       </div>
     </Layout>
   );
 
   /* -- 9: 体重 -- */
   if (step === 9) return (
-    <Layout canNext={parseFloat(data.weight) > 20}>
+    <Layout canNext={parseFloat(localWeight) > 20}>
       <div className="pt-4">
         <p className="text-green-400 text-xs font-semibold mb-2">基本プロフィール</p>
         <h2 className="text-xl font-bold text-white mb-6">現在の体重を入力してください</h2>
-        <NumberInput label="体重" unit="kg" value={data.weight} onChange={v => set('weight', v)} placeholder="65" />
-        {data.height && data.weight && (
+        <NumberInput
+          label="体重" unit="kg" value={data.weight}
+          onBlur={v => { setLocalWeight(v); set('weight', v); }}
+          placeholder="65"
+        />
+        {localHeight && localWeight && parseFloat(localHeight) > 0 && parseFloat(localWeight) > 0 && (
           <p className="text-gray-400 text-sm mt-3 text-center">
-            BMI: {(parseFloat(data.weight) / (parseFloat(data.height) / 100) ** 2).toFixed(1)}
+            BMI: {(parseFloat(localWeight) / (parseFloat(localHeight) / 100) ** 2).toFixed(1)}
           </p>
         )}
       </div>
@@ -400,12 +431,16 @@ export default function Onboarding() {
 
   /* -- 10: 目標体重 -- */
   if (step === 10) return (
-    <Layout canNext={parseFloat(data.targetWeight) > 20} onSkip={() => { set('targetWeight', data.weight); next(); }}>
+    <Layout canNext={parseFloat(localTargetWeight) > 20} onSkip={() => { set('targetWeight', data.weight); next(); }}>
       <div className="pt-4">
         <p className="text-green-400 text-xs font-semibold mb-2">基本プロフィール</p>
         <h2 className="text-xl font-bold text-white mb-2">目標体重を入力してください</h2>
         <p className="text-gray-400 text-xs mb-6">現在: {data.weight || '—'} kg</p>
-        <NumberInput label="目標体重" unit="kg" value={data.targetWeight} onChange={v => set('targetWeight', v)} placeholder="60" />
+        <NumberInput
+          label="目標体重" unit="kg" value={data.targetWeight}
+          onBlur={v => { setLocalTargetWeight(v); set('targetWeight', v); }}
+          placeholder="60"
+        />
       </div>
     </Layout>
   );
@@ -730,13 +765,13 @@ export default function Onboarding() {
         <p className="text-gray-400 text-xs mb-5">空欄のまま次へ進むと計算値をそのまま使用します</p>
         <div className="space-y-3">
           <NumberInput label="1日のカロリー目標" unit="kcal" value={data.dailyCalories}
-            onChange={v => set('dailyCalories', v)} placeholder={data.dailyCalories} />
+            onBlur={v => { if (v) set('dailyCalories', v); }} placeholder={data.dailyCalories} />
           <NumberInput label="タンパク質目標" unit="g" value={data.dailyProtein}
-            onChange={v => set('dailyProtein', v)} placeholder={data.dailyProtein} />
+            onBlur={v => { if (v) set('dailyProtein', v); }} placeholder={data.dailyProtein} />
           <NumberInput label="脂質目標" unit="g" value={data.dailyFat}
-            onChange={v => set('dailyFat', v)} placeholder={data.dailyFat} />
+            onBlur={v => { if (v) set('dailyFat', v); }} placeholder={data.dailyFat} />
           <NumberInput label="炭水化物目標" unit="g" value={data.dailyCarbs}
-            onChange={v => set('dailyCarbs', v)} placeholder={data.dailyCarbs} />
+            onBlur={v => { if (v) set('dailyCarbs', v); }} placeholder={data.dailyCarbs} />
         </div>
       </div>
     </Layout>
