@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "wouter";
 import {
@@ -402,7 +402,7 @@ function StepResults({ result, onReset }: { result: AnalysisResult; onReset: () 
           onClick={onReset}
           style={{ fontSize: 12, color: "#666", background: "#1a1a28", border: "1px solid #2a2a38", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}
         >
-          再検査
+          再アップロード
         </button>
       </div>
 
@@ -524,12 +524,28 @@ function StepResults({ result, onReset }: { result: AnalysisResult; onReset: () 
 /* ------------------------------------------------------------------ */
 type Step = "welcome" | "upload" | "analyzing" | "results" | "error";
 
+const BLOOD_TEST_KEY = "bloodTestResults";
+
 export default function Upload() {
   const [, navigate] = useLocation();
   const [step, setStep] = useState<Step>("welcome");
   const [analyzeStep, setAnalyzeStep] = useState(0);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // マウント時: 保存済みデータがあれば即 results へ
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(BLOOD_TEST_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        if (saved.markers) {
+          setResult(saved);
+          setStep("results");
+        }
+      }
+    } catch {}
+  }, []);
 
   const handleAnalyze = async (file: File, healthGoal: string, exercise: string, dietStyle: string) => {
     setStep("analyzing");
@@ -558,8 +574,9 @@ export default function Upload() {
 
       const json = await res.json();
       if (json.success && json.data) {
-        // 既存 healthCheckData 形式にも保存（他画面との互換性）
-        localStorage.setItem("healthCheckData", JSON.stringify(json.data));
+        // 統一キーで保存（Analysis・Supplements が参照）
+        const toSave = { ...json.data, savedAt: new Date().toISOString() };
+        localStorage.setItem(BLOOD_TEST_KEY, JSON.stringify(toSave));
         setTimeout(() => {
           setResult(json.data);
           setStep("results");
@@ -604,7 +621,11 @@ export default function Upload() {
         )}
 
         {step === "results" && result && (
-          <StepResults key="results" result={result} onReset={() => { setResult(null); setStep("upload"); }} />
+          <StepResults key="results" result={result} onReset={() => {
+            localStorage.removeItem(BLOOD_TEST_KEY);
+            setResult(null);
+            setStep("welcome");
+          }} />
         )}
 
         {step === "error" && (
