@@ -148,7 +148,10 @@ export default function Home() {
   const fatGoal     = parseInt(userProfile.dailyFat      || "65");
   const carbsGoal   = parseInt(userProfile.dailyCarbs    || "260");
 
-  const { totalCalories, totalProtein, totalFat, totalCarbs } = nutrition;
+  const totalCalories = Math.round(nutrition.totalCalories);
+  const totalProtein  = Math.round(nutrition.totalProtein);
+  const totalFat      = Math.round(nutrition.totalFat);
+  const totalCarbs    = Math.round(nutrition.totalCarbs);
   const hasLogs   = todayLogs.length > 0;
   const totalPfcG = totalProtein + totalFat + totalCarbs;
 
@@ -687,7 +690,7 @@ export default function Home() {
                           <div style={{ display: "flex", gap: 10 }}>
                             {[["P", "#4ade80", log.totalProtein], ["F", "#fbbf24", log.totalFat], ["C", "#60a5fa", log.totalCarbs]].map(([l, c, g]) => (
                               <span key={l as string} style={{ fontSize: 10, color: "#666" }}>
-                                <span style={{ color: c as string, fontWeight: 600 }}>{l}</span>: {g}g
+                                <span style={{ color: c as string, fontWeight: 600 }}>{l}</span>: {Math.round(g as number)}g
                               </span>
                             ))}
                             {log.healthScore > 0 && (

@@ -158,7 +158,7 @@ export default function ManualFoodEntry({ onSave, onClose }: ManualFoodEntryProp
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
         onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 480, height: '90vh', background: '#18181f', borderRadius: '16px 16px 0 0', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        style={{ width: '100%', maxWidth: 480, height: '90vh', background: '#18181f', borderRadius: '16px 16px 0 0', display: 'flex', flexDirection: 'column' }}
       >
         {/* ドラッグハンドル */}
         <div style={{ padding: '12px 0 0', display: 'flex', justifyContent: 'center' }}>
@@ -172,7 +172,7 @@ export default function ManualFoodEntry({ onSave, onClose }: ManualFoodEntryProp
         </div>
 
         {/* スクロールエリア */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 24px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '0 20px 24px' }}>
 
           {/* 食事タイミング */}
           <div style={{ marginBottom: 18 }}>
@@ -328,7 +328,7 @@ export default function ManualFoodEntry({ onSave, onClose }: ManualFoodEntryProp
         </div>
 
         {/* 保存ボタン */}
-        <div style={{ padding: '12px 20px 32px', borderTop: '1px solid #1e1e28' }}>
+        <div style={{ padding: '12px 20px', paddingBottom: 'max(28px, env(safe-area-inset-bottom, 28px))', borderTop: '1px solid #1e1e28', flexShrink: 0 }}>
           <button
             onClick={handleSave}
             disabled={!isValid}

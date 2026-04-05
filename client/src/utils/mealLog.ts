@@ -154,13 +154,27 @@ export function getRecentDailyLogs(days: number): DailyFoodLog[] {
 
 export function getTodayNutritionSummary() {
   const todayLogs = getTodayMealLog();
-  return {
-    totalCalories: todayLogs.reduce((s, e) => s + e.totalCalories, 0),
-    totalProtein:  todayLogs.reduce((s, e) => s + e.totalProtein,  0),
-    totalFat:      todayLogs.reduce((s, e) => s + e.totalFat,      0),
-    totalCarbs:    todayLogs.reduce((s, e) => s + e.totalCarbs,    0),
-    mealCount:     todayLogs.length,
-  };
+  if (todayLogs.length > 0) {
+    return {
+      totalCalories: Math.round(todayLogs.reduce((s, e) => s + e.totalCalories, 0)),
+      totalProtein:  Math.round(todayLogs.reduce((s, e) => s + e.totalProtein,  0)),
+      totalFat:      Math.round(todayLogs.reduce((s, e) => s + e.totalFat,      0)),
+      totalCarbs:    Math.round(todayLogs.reduce((s, e) => s + e.totalCarbs,    0)),
+      mealCount:     todayLogs.length,
+    };
+  }
+  // mealLog にデータがなければ foodLogs からフォールバック
+  const dayLog = getDailyLogByDate(todayStr());
+  if (dayLog) {
+    return {
+      totalCalories: Math.round(dayLog.totalCalories),
+      totalProtein:  Math.round(dayLog.protein),
+      totalFat:      Math.round(dayLog.fat),
+      totalCarbs:    Math.round(dayLog.carbs),
+      mealCount:     dayLog.meals.length,
+    };
+  }
+  return { totalCalories: 0, totalProtein: 0, totalFat: 0, totalCarbs: 0, mealCount: 0 };
 }
 
 export function getTodayAverageScore(): number {
@@ -194,20 +208,20 @@ function _syncToDailyLog(entry: MealLogEntry): void {
     // 当日エントリがなければ新規作成
     dailyLogs.push({
       date:          entry.date,
-      totalCalories: entry.totalCalories,
-      protein:       entry.totalProtein,
-      fat:           entry.totalFat,
-      carbs:         entry.totalCarbs,
+      totalCalories: Math.round(entry.totalCalories),
+      protein:       Math.round(entry.totalProtein),
+      fat:           Math.round(entry.totalFat),
+      carbs:         Math.round(entry.totalCarbs),
       meals:         [newMeal],
       score:         entry.healthScore,
     });
   } else {
     const day = dailyLogs[idx];
     day.meals.push(newMeal);
-    day.totalCalories += entry.totalCalories;
-    day.protein       += entry.totalProtein;
-    day.fat           += entry.totalFat;
-    day.carbs         += entry.totalCarbs;
+    day.totalCalories = Math.round(day.totalCalories + entry.totalCalories);
+    day.protein       = Math.round(day.protein       + entry.totalProtein);
+    day.fat           = Math.round(day.fat           + entry.totalFat);
+    day.carbs         = Math.round(day.carbs         + entry.totalCarbs);
     // スコアは scored 食事の平均
     const scored = day.meals.filter(m => (m as any).healthScore > 0);
     day.score = entry.healthScore; // 直近スコアを上書き（簡易版）
