@@ -7,6 +7,7 @@ import {
   getTodayNutritionSummary,
   getTodayAverageScore,
   addMealLog,
+  deleteMealLog,
   MealLogEntry,
 } from "../utils/mealLog";
 import BarcodeScanner from "../components/BarcodeScanner";
@@ -304,6 +305,31 @@ export default function Home() {
     });
     setBarcodeResult(null);
     showToast("✓ 食事ログに追加しました");
+    refresh();
+  };
+
+  // ── delete meal ──────────────────────────────────────────────────────
+  const handleDeleteMeal = (mealId: string) => {
+    const today = new Date().toISOString().split("T")[0];
+
+    // mealLog から削除（DailyFoodLog も内部で再計算）
+    deleteMealLog(mealId);
+
+    // foodLogs からも同期削除
+    const raw = localStorage.getItem("foodLogs");
+    if (raw) {
+      const logs = JSON.parse(raw);
+      const idx = logs.findIndex((l: any) => l.date === today);
+      if (idx >= 0) {
+        logs[idx].meals = logs[idx].meals.filter((m: any) => m.id !== mealId);
+        logs[idx].totalCalories = Math.round(logs[idx].meals.reduce((s: number, m: any) => s + (m.calories ?? 0), 0));
+        logs[idx].totalProtein  = Math.round(logs[idx].meals.reduce((s: number, m: any) => s + (m.protein  ?? 0), 0));
+        logs[idx].totalFat      = Math.round(logs[idx].meals.reduce((s: number, m: any) => s + (m.fat      ?? 0), 0));
+        logs[idx].totalCarbs    = Math.round(logs[idx].meals.reduce((s: number, m: any) => s + (m.carbs    ?? 0), 0));
+        localStorage.setItem("foodLogs", JSON.stringify(logs));
+      }
+    }
+
     refresh();
   };
 
@@ -671,34 +697,45 @@ export default function Home() {
                   const icon  = SOURCE_ICON[log.source ?? "photo"] ?? "🍽️";
                   const time  = new Date(log.loggedAt).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
                   return (
-                    <div key={log.id} style={{ background: "#0e0e15", borderRadius: 12, padding: 12, border: "1px solid #1e1e28" }}>
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                        <div style={{ width: 40, height: 40, borderRadius: 10, background: "#1a1a28", border: "1px solid #222", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, flexShrink: 0 }}>
-                          {icon}
+                    <div key={log.id} style={{ background: "#0e0e15", borderRadius: 12, padding: "10px 12px", border: "1px solid #1e1e28", display: "flex", alignItems: "center", gap: 10 }}>
+                      {/* ソースアイコン */}
+                      <div style={{ width: 36, height: 36, borderRadius: 8, background: "#1a1a28", border: "1px solid #222", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>
+                        {icon}
+                      </div>
+
+                      {/* 食事情報 */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: pill.bg, color: pill.text }}>{label}</span>
+                          <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 10, color: "#555" }}>
+                            <Clock style={{ width: 9, height: 9 }} />{time}
+                          </span>
                         </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 3 }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 999, background: pill.bg, color: pill.text }}>{label}</span>
-                              <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 10, color: "#555" }}>
-                                <Clock style={{ width: 9, height: 9 }} />{time}
-                              </span>
-                            </div>
-                            <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>{log.totalCalories} kcal</span>
-                          </div>
-                          <p style={{ fontSize: 12, color: "#ccc", fontWeight: 500, marginBottom: 4, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{log.mealName}</p>
-                          <div style={{ display: "flex", gap: 10 }}>
-                            {[["P", "#4ade80", log.totalProtein], ["F", "#fbbf24", log.totalFat], ["C", "#60a5fa", log.totalCarbs]].map(([l, c, g]) => (
-                              <span key={l as string} style={{ fontSize: 10, color: "#666" }}>
-                                <span style={{ color: c as string, fontWeight: 600 }}>{l}</span>: {Math.round(g as number)}g
-                              </span>
-                            ))}
-                            {log.healthScore > 0 && (
-                              <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600, marginLeft: "auto" }}>スコア {log.healthScore}</span>
-                            )}
-                          </div>
+                        <p style={{ fontSize: 12, color: "#ccc", fontWeight: 500, marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{log.mealName}</p>
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#fff" }}>{log.totalCalories} kcal</span>
+                          <span style={{ fontSize: 10, color: "#555" }}>·</span>
+                          {[["P", "#4ade80", log.totalProtein], ["F", "#fbbf24", log.totalFat], ["C", "#60a5fa", log.totalCarbs]].map(([l, c, g]) => (
+                            <span key={l as string} style={{ fontSize: 10, color: "#666" }}>
+                              <span style={{ color: c as string, fontWeight: 600 }}>{l}</span>:{Math.round(g as number)}g
+                            </span>
+                          ))}
+                          {log.healthScore > 0 && (
+                            <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600, marginLeft: "auto" }}>スコア {log.healthScore}</span>
+                          )}
                         </div>
                       </div>
+
+                      {/* 削除ボタン */}
+                      <button
+                        onClick={() => handleDeleteMeal(log.id)}
+                        style={{ background: "none", border: "none", color: "#3a3a4a", fontSize: 20, cursor: "pointer", padding: "0 2px", flexShrink: 0, lineHeight: 1, transition: "color 0.15s" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.color = "#3a3a4a"; }}
+                        title="削除"
+                      >
+                        ×
+                      </button>
                     </div>
                   );
                 })}

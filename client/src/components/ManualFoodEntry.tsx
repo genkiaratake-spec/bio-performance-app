@@ -150,29 +150,33 @@ export default function ManualFoodEntry({ onSave, onClose }: ManualFoodEntryProp
   const hba1cHigh = matchHint(bloodHints.high, ['HbA1c', '血糖'])
 
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9000, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
-      onClick={onClose}
-    >
+    /* ── 外側: フルスクリーン、下揃え ── */
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9000, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end' }}>
+
+      {/* 背景オーバーレイ（クリックで閉じる） */}
+      <div
+        style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)' }}
+        onClick={onClose}
+      />
+
+      {/* モーダル本体（スライドアニメーション） */}
       <motion.div
         initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
         transition={{ type: 'spring', damping: 30, stiffness: 300 }}
         onClick={(e) => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 480, height: '90vh', background: '#18181f', borderRadius: '16px 16px 0 0', display: 'flex', flexDirection: 'column' }}
+        style={{ position: 'relative', width: '100%', maxWidth: 480, alignSelf: 'center', background: '#18181f', borderRadius: '16px 16px 0 0', display: 'flex', flexDirection: 'column', maxHeight: '85vh' }}
       >
-        {/* ドラッグハンドル */}
-        <div style={{ padding: '12px 0 0', display: 'flex', justifyContent: 'center' }}>
-          <div style={{ width: 36, height: 4, background: '#333', borderRadius: 2 }} />
-        </div>
-
-        {/* ヘッダー */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px 10px' }}>
-          <p style={{ fontSize: 16, fontWeight: 600, color: '#e8e8f0', margin: 0 }}>食事を手入力</p>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#7a7a90', fontSize: 22, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>✕</button>
+        {/* ドラッグハンドル + ヘッダー（固定） */}
+        <div style={{ padding: '12px 20px 0', flexShrink: 0 }}>
+          <div style={{ width: 36, height: 4, background: '#2a2a35', borderRadius: 2, margin: '0 auto 12px' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <span style={{ fontSize: 16, fontWeight: 600, color: '#e8e8f0' }}>食事を手入力</span>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#7a7a90', fontSize: 22, cursor: 'pointer', padding: '0 4px', lineHeight: 1 }}>✕</button>
+          </div>
         </div>
 
         {/* スクロールエリア */}
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '0 20px 24px' }}>
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '0 20px 8px' }}>
 
           {/* 食事タイミング */}
           <div style={{ marginBottom: 18 }}>
@@ -327,12 +331,12 @@ export default function ManualFoodEntry({ onSave, onClose }: ManualFoodEntryProp
           </AnimatePresence>
         </div>
 
-        {/* 保存ボタン */}
-        <div style={{ padding: '12px 20px', paddingBottom: 'max(28px, env(safe-area-inset-bottom, 28px))', borderTop: '1px solid #1e1e28', flexShrink: 0 }}>
+        {/* 保存ボタン（スクロール領域外・常に表示） */}
+        <div style={{ padding: '12px 20px', paddingBottom: 'max(20px, env(safe-area-inset-bottom, 20px))', borderTop: '1px solid #2a2a35', background: '#18181f', flexShrink: 0 }}>
           <button
             onClick={handleSave}
             disabled={!isValid}
-            style={{ width: '100%', padding: '14px', borderRadius: 12, background: isValid ? '#3dd68c' : '#2a2a35', border: 'none', color: isValid ? '#0f0f12' : '#4a4a60', fontSize: 14, fontWeight: 600, cursor: isValid ? 'pointer' : 'not-allowed', transition: 'background 0.2s, color 0.2s' }}
+            style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', fontSize: 14, fontWeight: 600, cursor: isValid ? 'pointer' : 'not-allowed', background: isValid ? '#3dd68c' : '#2a2a35', color: isValid ? '#0f0f12' : '#4a4a60', transition: 'all 0.2s' }}
           >
             記録する
           </button>
