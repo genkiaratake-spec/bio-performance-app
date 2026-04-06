@@ -85,6 +85,7 @@ export default function ManualFoodEntry({ onSave, onClose }: Props) {
     <div style={{
       position: 'fixed', inset: 0, zIndex: 9999,
       display: 'flex', flexDirection: 'column', justifyContent: 'flex-end',
+      paddingBottom: '80px',
     }}>
       {/* オーバーレイ */}
       <div
@@ -99,7 +100,8 @@ export default function ManualFoodEntry({ onSave, onClose }: Props) {
         borderRadius: '16px 16px 0 0',
         display: 'flex',
         flexDirection: 'column',
-        maxHeight: '90vh',
+        maxHeight: 'calc(90vh - 80px)',
+        marginBottom: '80px',
         overflow: 'hidden',
         zIndex: 1,
       }}>
