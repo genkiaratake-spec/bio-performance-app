@@ -257,12 +257,8 @@ export default function Home() {
       totalCalories: meal.calories, totalProtein: meal.protein,
       totalFat: meal.fat, totalCarbs: meal.carbs,
       healthScore: 0, source: "manual",
-      // 炭水化物内訳
-      fiber: meal.fiber, sugar: meal.sugar,
-      // 脂質内訳
-      saturatedFat: meal.saturatedFat, cholesterol: meal.cholesterol,
-      // ミネラル
-      iron: meal.iron, sodium: meal.sodium,
+      fiber: meal.fiber,
+      sodium: meal.sodium,
       note: meal.note,
     });
     setShowManualEntry(false);
