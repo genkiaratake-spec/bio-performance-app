@@ -748,54 +748,49 @@ export default function Home() {
       {/* ── FABs: 3ボタン横並び ── */}
       <div style={{
         position: "fixed", bottom: 88, left: 16, right: 16, zIndex: 60,
-        display: "flex", flexDirection: "row", gap: 8, alignItems: "stretch",
+        display: "flex", flexDirection: "row", gap: 8,
       }}>
         {/* 📷 食事を撮影 */}
-        <motion.button
-          whileTap={{ scale: 0.95 }}
+        <button
           onClick={() => photoInputRef.current?.click()}
           style={{
-            flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+            flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
             background: "#4ade80", color: "#000",
-            border: "none", borderRadius: 14,
-            padding: "14px 0", fontSize: 13, fontWeight: 700,
-            cursor: "pointer", boxShadow: "0 0 20px #4ade8050",
-          }}
-        >
-          <Camera style={{ width: 15, height: 15 }} />
-          食事を撮影
-        </motion.button>
-
-        {/* 🔲 バーコード */}
-        <motion.button
-          whileTap={{ scale: 0.95 }}
-          onClick={() => setShowScanner(true)}
-          style={{
-            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-            background: "#1e2a3a", color: "#60a5fa",
-            border: "1px solid #60a5fa50", borderRadius: 14,
-            padding: "14px 0", fontSize: 12, fontWeight: 700,
+            border: "none", borderRadius: 24,
+            padding: "12px 16px", fontSize: 14, fontWeight: 600,
             cursor: "pointer",
           }}
         >
-          <BarcodeIcon size={14} />
-          バーコード
-        </motion.button>
+          📷 食事を撮影
+        </button>
+
+        {/* 🔲 バーコード */}
+        <button
+          onClick={() => setShowScanner(true)}
+          style={{
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            background: "#60a5fa", color: "#000",
+            border: "none", borderRadius: 24,
+            padding: "12px 8px", fontSize: 13, fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          🔲 バーコード
+        </button>
 
         {/* ✏️ 手入力 */}
-        <motion.button
-          whileTap={{ scale: 0.95 }}
+        <button
           onClick={() => setShowManualEntry(true)}
           style={{
-            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
-            background: "#1e1a2a", color: "#a78bfa",
-            border: "1px solid #a78bfa50", borderRadius: 14,
-            padding: "14px 0", fontSize: 12, fontWeight: 700,
+            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            background: "#a78bfa", color: "#000",
+            border: "none", borderRadius: 24,
+            padding: "12px 8px", fontSize: 13, fontWeight: 600,
             cursor: "pointer",
           }}
         >
           ✏️ 手入力
-        </motion.button>
+        </button>
       </div>
     </div>
   );
