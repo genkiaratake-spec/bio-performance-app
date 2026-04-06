@@ -262,7 +262,7 @@ export default function Home() {
       // 脂質内訳
       saturatedFat: meal.saturatedFat, cholesterol: meal.cholesterol,
       // ミネラル
-      iron: meal.iron, sodium: meal.sodium, potassium: meal.potassium,
+      iron: meal.iron, sodium: meal.sodium,
       note: meal.note,
     });
     setShowManualEntry(false);
@@ -672,22 +672,32 @@ export default function Home() {
               {hasLogs && <span style={{ fontSize: 10, color: "#555" }}>{todayLogs.length}件</span>}
             </div>
 
+            {/* ── 食事追加ボタン (常時表示) ── */}
+            <div style={{ display: "flex", gap: 8, marginBottom: hasLogs ? 12 : 0 }}>
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                style={{ flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#4ade8018", border: "1px solid #4ade8040", color: "#4ade80", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+              >
+                <Camera style={{ width: 12, height: 12 }} />食事を撮影
+              </button>
+              <button
+                onClick={() => setShowScanner(true)}
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#60a5fa18", border: "1px solid #60a5fa40", color: "#60a5fa", borderRadius: 10, padding: "9px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+              >
+                <BarcodeIcon size={12} />バーコード
+              </button>
+              <button
+                onClick={() => setShowManualEntry(true)}
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#a78bfa18", border: "1px solid #a78bfa40", color: "#a78bfa", borderRadius: 10, padding: "9px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+              >
+                ✏️手入力
+              </button>
+            </div>
+
             {!hasLogs ? (
-              <div style={{ textAlign: "center", padding: "20px 0" }}>
-                <p style={{ fontSize: 13, color: "#555", marginBottom: 6 }}>まだ食事が記録されていません</p>
-                <p style={{ fontSize: 11, color: "#444", marginBottom: 16 }}>下のボタンから記録を始めましょう</p>
-                <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-                  {[
-                    { icon: <Camera style={{ width: 12, height: 12 }} />, label: "食事を撮影", color: "#4ade80", onClick: () => photoInputRef.current?.click() },
-                    { icon: <BarcodeIcon size={12} />, label: "バーコード", color: "#60a5fa", onClick: () => setShowScanner(true) },
-                    { icon: <span>✏️</span>, label: "手入力", color: "#a78bfa", onClick: () => setShowManualEntry(true) },
-                  ].map(({ icon, label, color, onClick }) => (
-                    <button key={label} onClick={onClick}
-                      style={{ display: "inline-flex", alignItems: "center", gap: 5, background: `${color}18`, border: `1px solid ${color}40`, color, borderRadius: 10, padding: "7px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                      {icon}{label}
-                    </button>
-                  ))}
-                </div>
+              <div style={{ textAlign: "center", padding: "12px 0 4px" }}>
+                <p style={{ fontSize: 13, color: "#555", marginBottom: 4 }}>まだ食事が記録されていません</p>
+                <p style={{ fontSize: 11, color: "#444" }}>上のボタンから記録を始めましょう</p>
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -745,53 +755,6 @@ export default function Home() {
         </motion.div>
       </div>
 
-      {/* ── FABs: 3ボタン横並び ── */}
-      <div style={{
-        position: "fixed", bottom: 88, left: 16, right: 16, zIndex: 60,
-        display: "flex", flexDirection: "row", gap: 8,
-      }}>
-        {/* 📷 食事を撮影 */}
-        <button
-          onClick={() => photoInputRef.current?.click()}
-          style={{
-            flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            background: "#4ade80", color: "#000",
-            border: "none", borderRadius: 24,
-            padding: "12px 16px", fontSize: 14, fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          📷 食事を撮影
-        </button>
-
-        {/* 🔲 バーコード */}
-        <button
-          onClick={() => setShowScanner(true)}
-          style={{
-            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            background: "#60a5fa", color: "#000",
-            border: "none", borderRadius: 24,
-            padding: "12px 8px", fontSize: 13, fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          🔲 バーコード
-        </button>
-
-        {/* ✏️ 手入力 */}
-        <button
-          onClick={() => setShowManualEntry(true)}
-          style={{
-            flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-            background: "#a78bfa", color: "#000",
-            border: "none", borderRadius: 24,
-            padding: "12px 8px", fontSize: 13, fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          ✏️ 手入力
-        </button>
-      </div>
     </div>
   );
 }
