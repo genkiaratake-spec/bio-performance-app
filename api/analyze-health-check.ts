@@ -99,7 +99,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           contentItem,
           {
             type: 'text',
-            text: `この健康診断結果から以下の項目を抽出してください。
+            text: `あなたはJSONのみを返すAPIです。説明文・前置き・コードブロック記号(\`\`\`)は一切含めず、必ずJSONオブジェクト { } のみで応答してください。
+
+この健康診断結果から以下の項目を抽出してください。
 項目が存在しない場合はnullにしてください。
 必ずJSON形式のみで返答し、前後の説明文は不要です。
 
@@ -138,10 +140,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return res.status(500).json({ error: '解析結果の取得に失敗しました' });
+      console.error('No JSON in response:', responseText.substring(0, 200));
+      return res.status(500).json({ success: false, error: 'AIの応答からJSONを取得できませんでした' });
     }
 
-    const healthData = JSON.parse(jsonMatch[0]);
+    let healthData;
+    try {
+      healthData = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      console.error('JSON parse failed:', jsonMatch[0].substring(0, 200));
+      return res.status(500).json({ success: false, error: 'レスポンスのJSON解析に失敗しました' });
+    }
     return res.status(200).json({ success: true, data: healthData });
 
   } catch (error) {

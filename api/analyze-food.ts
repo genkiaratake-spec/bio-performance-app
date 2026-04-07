@@ -137,7 +137,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           },
           {
             type: 'text',
-            text: `${healthContext}この食事の写真を詳しく分析してください。
+            text: `あなたはJSONのみを返すAPIです。説明文・前置き・コードブロック記号(\`\`\`)は一切含めず、必ずJSONオブジェクト { } のみで応答してください。
+
+${healthContext}この食事の写真を詳しく分析してください。
 日本食・アジア料理・西洋料理を含む世界各地の料理に精通しており、
 日本のコンビニ食・定食・弁当・ファストフード・家庭料理についても
 正確にカロリーと栄養素を推定できます。
@@ -174,9 +176,18 @@ mealName を「認識不可」にしてください。`
 
     const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
     const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return res.status(500).json({ error: '解析結果の取得に失敗しました' });
+    if (!jsonMatch) {
+      console.error('No JSON in response:', responseText.substring(0, 200));
+      return res.status(500).json({ success: false, error: 'AIの応答からJSONを取得できませんでした' });
+    }
 
-    const foodData = JSON.parse(jsonMatch[0]);
+    let foodData;
+    try {
+      foodData = JSON.parse(jsonMatch[0]);
+    } catch (parseErr) {
+      console.error('JSON parse failed:', jsonMatch[0].substring(0, 200));
+      return res.status(500).json({ success: false, error: 'レスポンスのJSON解析に失敗しました' });
+    }
     return res.status(200).json({ success: true, data: foodData });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
