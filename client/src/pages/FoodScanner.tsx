@@ -94,48 +94,12 @@ export default function FoodScanner() {
   const analyzeFood = useCallback(async (file: File) => {
     setAnalysisError(null);
     setAnalysisResult(null);
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
+    setPreviewUrl(URL.createObjectURL(file));
     setPhase("scanning");
-
-    console.log('analyzeFood start. protocol:', window.location.protocol, 'API_BASE:', API_BASE);
-    console.log('file:', file.name, file.type, file.size);
 
     try {
       const formData = new FormData();
-
-      // HEIC/HEIF/未対応形式をCanvasでJPEGに変換（iOS iPhoneカメラ対応）
-      const toSafeJpeg = (inputFile: File): Promise<File> => {
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-              const canvas = document.createElement('canvas');
-              const MAX = 1200;
-              const scale = Math.min(MAX / img.width, MAX / img.height, 1);
-              canvas.width = Math.round(img.width * scale);
-              canvas.height = Math.round(img.height * scale);
-              canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-              canvas.toBlob(
-                (blob) => resolve(blob
-                  ? new File([blob], 'food.jpg', { type: 'image/jpeg' })
-                  : inputFile
-                ),
-                'image/jpeg', 0.85
-              );
-            };
-            img.onerror = () => resolve(inputFile);
-            img.src = e.target!.result as string;
-          };
-          reader.onerror = () => resolve(inputFile);
-          reader.readAsDataURL(inputFile);
-        });
-      };
-
-      const safeFile = await toSafeJpeg(file);
-      console.log('Original:', file.type, file.size, '-> Safe:', safeFile.type, safeFile.size);
-      formData.append('file', safeFile);
+      formData.append('file', file);          // 変換なしで直接送信
 
       // bloodTestResults（新形式）を優先、なければ healthCheckData（旧形式）を使用
       const bloodTestRaw = localStorage.getItem('bloodTestResults');
@@ -146,9 +110,8 @@ export default function FoodScanner() {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-      console.log('Fetching:', `${API_BASE}/api/analyze-food`);
       const response = await fetch(`${API_BASE}/api/analyze-food`, {
         method: 'POST',
         body: formData,
@@ -156,15 +119,12 @@ export default function FoodScanner() {
       });
       clearTimeout(timeoutId);
 
-      console.log('Response status:', response.status);
       const text = await response.text();
-      console.log('Response body:', text.substring(0, 300));
-
       let result;
       try {
         result = JSON.parse(text);
       } catch {
-        setAnalysisError('レスポンス解析失敗: ' + text.substring(0, 80));
+        setAnalysisError('Parse error: ' + text.substring(0, 60));
         setPhase("idle");
         return;
       }
@@ -173,15 +133,14 @@ export default function FoodScanner() {
         setAnalysisResult(result.data);
         setPhase("result");
       } else {
-        setAnalysisError(result.error || result.detail || '解析に失敗しました');
+        setAnalysisError(result.error || '解析に失敗しました');
         setPhase("idle");
       }
     } catch (err) {
-      console.error('analyzeFood catch:', err);
       if (err instanceof Error && err.name === 'AbortError') {
-        setAnalysisError('タイムアウト（45秒）。もう一度お試しください');
+        setAnalysisError('タイムアウト（60秒）');
       } else {
-        setAnalysisError('通信エラー: ' + (err instanceof Error ? err.message : String(err)));
+        setAnalysisError('fetch失敗: ' + (err instanceof Error ? err.message : String(err)));
       }
       setPhase("idle");
     }

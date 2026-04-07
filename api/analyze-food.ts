@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import busboy from 'busboy';
+import sharp from 'sharp';
 
 export const config = { api: { bodyParser: false } };
 
@@ -44,14 +45,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { buffer, mimeType, healthData } = await parseForm(req);
-    const base64Data = buffer.toString('base64');
-    // HEIC等の未サポート形式はjpegとして処理（フロントで変換済みのはずだが念のため）
-    const normalized = mimeType.toLowerCase();
-    const imageMediaType = (
-      normalized.includes('png')  ? 'image/png'  :
-      normalized.includes('gif')  ? 'image/gif'  :
-      normalized.includes('webp') ? 'image/webp' : 'image/jpeg'
-    ) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+    // sharpでJPEGに変換（HEIC含む全形式対応・リサイズも同時実行）
+    let processedBuffer = buffer;
+    let processedMediaType: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp' = 'image/jpeg';
+    try {
+      processedBuffer = await sharp(buffer)
+        .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      processedMediaType = 'image/jpeg';
+      console.log('sharp converted:', buffer.length, '->', processedBuffer.length);
+    } catch (sharpErr) {
+      // sharpが失敗した場合は元のバッファで続行
+      console.warn('sharp failed, using original:', sharpErr);
+      const normalized = mimeType.toLowerCase();
+      processedMediaType = (
+        normalized.includes('png')  ? 'image/png'  :
+        normalized.includes('gif')  ? 'image/gif'  :
+        normalized.includes('webp') ? 'image/webp' : 'image/jpeg'
+      ) as typeof processedMediaType;
+    }
+
+    const base64Data = processedBuffer.toString('base64');
+    const imageMediaType = processedMediaType;
 
     // bloodTestResults 形式（markers[]）と旧形式（ldlCholesterol等）の両方に対応
     let healthContext = '';

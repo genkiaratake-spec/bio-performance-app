@@ -40,7 +40,9 @@
       "Bash(curl --version)",
       "Bash(claude config:*)",
       "Bash(vercel --prod --yes)",
-      "Bash(del \"C:\\\\Users\\\\genki\\\\OneDrive\\\\bio-performance-app\\\\client\\\\src\\\\constants\\\\crispMenu.ts\")"
+      "Bash(del \"C:\\\\Users\\\\genki\\\\OneDrive\\\\bio-performance-app\\\\client\\\\src\\\\constants\\\\crispMenu.ts\")",
+      "Bash(curl -s https://bio-performance-app.vercel.app/)",
+      "Bash(curl -s \"https://bio-performance-app.vercel.app/assets/index-KpDMAeeA.js\")"
     ]
   }
 }
