@@ -52,6 +52,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { buffer, mimeType } = await parseForm(req);
+    console.log('PDF buffer size:', buffer.length, 'mimeType:', mimeType);
+    if (buffer.length < 100) {
+      return res.status(400).json({ success: false, error: 'ファイルが空または破損しています' });
+    }
     const base64Data = buffer.toString('base64');
 
     // MIMEタイプの正規化
