@@ -18,7 +18,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                  userProfile?.goal === 'diet'   ? 'ダイエット・体重管理'         : '栄養バランス改善';
 
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       messages: [{
         role: 'user',
