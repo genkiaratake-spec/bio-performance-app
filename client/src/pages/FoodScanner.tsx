@@ -92,9 +92,10 @@ export default function FoodScanner() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const resizeImage = (file: File): Promise<Blob> => {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d')!;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) { reject(new Error('canvas context unavailable')); return; }
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
@@ -113,8 +114,12 @@ export default function FoodScanner() {
         canvas.height = height;
         ctx.drawImage(img, 0, 0, width, height);
         URL.revokeObjectURL(url);
-        canvas.toBlob((blob) => resolve(blob!), 'image/jpeg', 0.85);
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('toBlob returned null'));
+        }, 'image/jpeg', 0.85);
       };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image load failed')); };
       img.src = url;
     });
   };
@@ -129,20 +134,20 @@ export default function FoodScanner() {
     try {
       const formData = new FormData();
 
-      // 2MB以上の場合のみリサイズ（失敗時は元ファイルを使用）
-      if (file.size > 2 * 1024 * 1024) {
+      // 1.5MB以上の場合リサイズ試行（失敗時は元ファイルをそのまま使用）
+      let fileToUpload: File = file;
+      if (file.size > 1.5 * 1024 * 1024) {
         try {
           const resizedBlob = await resizeImage(file);
-          const resizedFile = new File([resizedBlob], 'food.jpg', { type: 'image/jpeg' });
-          console.log('Resized:', file.size, '->', resizedFile.size);
-          formData.append('file', resizedFile);
-        } catch (resizeErr) {
-          console.warn('Resize failed, using original:', resizeErr);
-          formData.append('file', file);
+          if (resizedBlob && resizedBlob.size > 0) {
+            fileToUpload = new File([resizedBlob], 'food.jpg', { type: 'image/jpeg' });
+            console.log('Resize OK:', file.size, '->', fileToUpload.size);
+          }
+        } catch (e) {
+          console.warn('Resize failed, using original file. Size:', file.size);
         }
-      } else {
-        formData.append('file', file);
       }
+      formData.append('file', fileToUpload);
 
       // bloodTestResults（新形式）を優先、なければ healthCheckData（旧形式）を使用
       const bloodTestRaw = localStorage.getItem('bloodTestResults');
@@ -163,7 +168,8 @@ export default function FoodScanner() {
       clearTimeout(timeoutId);
 
       const text = await response.text();
-      console.log('Response:', response.status, text.substring(0, 200));
+      console.log('API response status:', response.status);
+      console.log('API response body:', text.substring(0, 300));
       let result;
       try { result = JSON.parse(text); } catch {
         setAnalysisError('レスポンスの解析に失敗しました: ' + text.substring(0, 100));

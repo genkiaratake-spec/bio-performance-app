@@ -107,7 +107,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const message = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
       max_tokens: 1500,
       messages: [{
         role: 'user',
@@ -160,10 +160,8 @@ mealName を「認識不可」にしてください。`
     const foodData = JSON.parse(jsonMatch[0]);
     return res.status(200).json({ success: true, data: foodData });
   } catch (error) {
-    console.error('Food analysis error:', error);
-    return res.status(500).json({
-      error: '解析中にエラーが発生しました',
-      detail: error instanceof Error ? error.message : String(error)
-    });
+    console.error('analyze-food error:', JSON.stringify(error));
+    const msg = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ success: false, error: msg });
   }
 }
