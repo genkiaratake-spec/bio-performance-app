@@ -45,10 +45,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const { buffer, mimeType, healthData } = await parseForm(req);
     const base64Data = buffer.toString('base64');
+    // HEIC等の未サポート形式はjpegとして処理（フロントで変換済みのはずだが念のため）
+    const normalized = mimeType.toLowerCase();
     const imageMediaType = (
-      mimeType === 'image/png' ? 'image/png' :
-      mimeType === 'image/gif' ? 'image/gif' :
-      mimeType === 'image/webp' ? 'image/webp' : 'image/jpeg'
+      normalized.includes('png')  ? 'image/png'  :
+      normalized.includes('gif')  ? 'image/gif'  :
+      normalized.includes('webp') ? 'image/webp' : 'image/jpeg'
     ) as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
 
     // bloodTestResults 形式（markers[]）と旧形式（ldlCholesterol等）の両方に対応
@@ -160,8 +162,8 @@ mealName を「認識不可」にしてください。`
     const foodData = JSON.parse(jsonMatch[0]);
     return res.status(200).json({ success: true, data: foodData });
   } catch (error) {
-    console.error('analyze-food error:', JSON.stringify(error));
     const msg = error instanceof Error ? error.message : String(error);
-    return res.status(500).json({ success: false, error: msg });
+    console.error('analyze-food error:', msg);
+    return res.status(500).json({ success: false, error: 'API Error: ' + msg.substring(0, 100) });
   }
 }

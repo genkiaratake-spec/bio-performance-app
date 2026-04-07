@@ -104,48 +104,38 @@ export default function FoodScanner() {
     try {
       const formData = new FormData();
 
-      // 5MB超のみリサイズ試行（FileReader経由でiOS互換、5秒タイムアウト付き）
-      if (file.size > 5 * 1024 * 1024) {
-        const resized = await new Promise<Blob | null>((resolve) => {
-          const timer = setTimeout(() => resolve(null), 5000);
+      // HEIC/HEIF/未対応形式をCanvasでJPEGに変換（iOS iPhoneカメラ対応）
+      const toSafeJpeg = (inputFile: File): Promise<File> => {
+        return new Promise((resolve) => {
           const reader = new FileReader();
           reader.onload = (e) => {
             const img = new Image();
             img.onload = () => {
-              try {
-                const canvas = document.createElement('canvas');
-                const MAX = 1200;
-                const scale = Math.min(MAX / img.width, MAX / img.height, 1);
-                canvas.width = Math.round(img.width * scale);
-                canvas.height = Math.round(img.height * scale);
-                canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-                canvas.toBlob((blob) => {
-                  clearTimeout(timer);
-                  resolve(blob);
-                }, 'image/jpeg', 0.82);
-              } catch {
-                clearTimeout(timer);
-                resolve(null);
-              }
+              const canvas = document.createElement('canvas');
+              const MAX = 1200;
+              const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+              canvas.width = Math.round(img.width * scale);
+              canvas.height = Math.round(img.height * scale);
+              canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+              canvas.toBlob(
+                (blob) => resolve(blob
+                  ? new File([blob], 'food.jpg', { type: 'image/jpeg' })
+                  : inputFile
+                ),
+                'image/jpeg', 0.85
+              );
             };
-            img.onerror = () => { clearTimeout(timer); resolve(null); };
+            img.onerror = () => resolve(inputFile);
             img.src = e.target!.result as string;
           };
-          reader.onerror = () => { clearTimeout(timer); resolve(null); };
-          reader.readAsDataURL(file);
+          reader.onerror = () => resolve(inputFile);
+          reader.readAsDataURL(inputFile);
         });
+      };
 
-        if (resized && resized.size > 0 && resized.size < file.size) {
-          console.log('Resized:', file.size, '->', resized.size);
-          formData.append('file', new File([resized], 'food.jpg', { type: 'image/jpeg' }));
-        } else {
-          console.warn('Resize failed/skipped, sending original');
-          formData.append('file', file);
-        }
-      } else {
-        console.log('File under 5MB, sending as-is');
-        formData.append('file', file);
-      }
+      const safeFile = await toSafeJpeg(file);
+      console.log('Original:', file.type, file.size, '-> Safe:', safeFile.type, safeFile.size);
+      formData.append('file', safeFile);
 
       // bloodTestResults（新形式）を優先、なければ healthCheckData（旧形式）を使用
       const bloodTestRaw = localStorage.getItem('bloodTestResults');
@@ -307,7 +297,7 @@ export default function FoodScanner() {
                   id="food-camera-input"
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
                   capture="environment"
                   onChange={handleInputChange}
                   style={{ position: "absolute", width: "1px", height: "1px", opacity: 0, overflow: "hidden", top: 0, left: 0 }}
