@@ -91,39 +91,6 @@ export default function FoodScanner() {
   const [savedMessage, setSavedMessage] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const resizeImage = (file: File): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { reject(new Error('canvas context unavailable')); return; }
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        const maxSize = 1024;
-        let { width, height } = img;
-        if (width > maxSize || height > maxSize) {
-          if (width > height) {
-            height = (height / width) * maxSize;
-            width = maxSize;
-          } else {
-            width = (width / height) * maxSize;
-            height = maxSize;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        ctx.drawImage(img, 0, 0, width, height);
-        URL.revokeObjectURL(url);
-        canvas.toBlob((blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('toBlob returned null'));
-        }, 'image/jpeg', 0.85);
-      };
-      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image load failed')); };
-      img.src = url;
-    });
-  };
-
   const analyzeFood = useCallback(async (file: File) => {
     setAnalysisError(null);
     setAnalysisResult(null);
@@ -131,23 +98,54 @@ export default function FoodScanner() {
     setPreviewUrl(url);
     setPhase("scanning");
 
+    console.log('analyzeFood start. protocol:', window.location.protocol, 'API_BASE:', API_BASE);
+    console.log('file:', file.name, file.type, file.size);
+
     try {
       const formData = new FormData();
 
-      // 1.5MB以上の場合リサイズ試行（失敗時は元ファイルをそのまま使用）
-      let fileToUpload: File = file;
-      if (file.size > 1.5 * 1024 * 1024) {
-        try {
-          const resizedBlob = await resizeImage(file);
-          if (resizedBlob && resizedBlob.size > 0) {
-            fileToUpload = new File([resizedBlob], 'food.jpg', { type: 'image/jpeg' });
-            console.log('Resize OK:', file.size, '->', fileToUpload.size);
-          }
-        } catch (e) {
-          console.warn('Resize failed, using original file. Size:', file.size);
+      // 5MB超のみリサイズ試行（FileReader経由でiOS互換、5秒タイムアウト付き）
+      if (file.size > 5 * 1024 * 1024) {
+        const resized = await new Promise<Blob | null>((resolve) => {
+          const timer = setTimeout(() => resolve(null), 5000);
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+              try {
+                const canvas = document.createElement('canvas');
+                const MAX = 1200;
+                const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+                canvas.width = Math.round(img.width * scale);
+                canvas.height = Math.round(img.height * scale);
+                canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob((blob) => {
+                  clearTimeout(timer);
+                  resolve(blob);
+                }, 'image/jpeg', 0.82);
+              } catch {
+                clearTimeout(timer);
+                resolve(null);
+              }
+            };
+            img.onerror = () => { clearTimeout(timer); resolve(null); };
+            img.src = e.target!.result as string;
+          };
+          reader.onerror = () => { clearTimeout(timer); resolve(null); };
+          reader.readAsDataURL(file);
+        });
+
+        if (resized && resized.size > 0 && resized.size < file.size) {
+          console.log('Resized:', file.size, '->', resized.size);
+          formData.append('file', new File([resized], 'food.jpg', { type: 'image/jpeg' }));
+        } else {
+          console.warn('Resize failed/skipped, sending original');
+          formData.append('file', file);
         }
+      } else {
+        console.log('File under 5MB, sending as-is');
+        formData.append('file', file);
       }
-      formData.append('file', fileToUpload);
 
       // bloodTestResults（新形式）を優先、なければ healthCheckData（旧形式）を使用
       const bloodTestRaw = localStorage.getItem('bloodTestResults');
@@ -158,8 +156,9 @@ export default function FoodScanner() {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
 
+      console.log('Fetching:', `${API_BASE}/api/analyze-food`);
       const response = await fetch(`${API_BASE}/api/analyze-food`, {
         method: 'POST',
         body: formData,
@@ -167,12 +166,15 @@ export default function FoodScanner() {
       });
       clearTimeout(timeoutId);
 
+      console.log('Response status:', response.status);
       const text = await response.text();
-      console.log('API response status:', response.status);
-      console.log('API response body:', text.substring(0, 300));
+      console.log('Response body:', text.substring(0, 300));
+
       let result;
-      try { result = JSON.parse(text); } catch {
-        setAnalysisError('レスポンスの解析に失敗しました: ' + text.substring(0, 100));
+      try {
+        result = JSON.parse(text);
+      } catch {
+        setAnalysisError('レスポンス解析失敗: ' + text.substring(0, 80));
         setPhase("idle");
         return;
       }
@@ -185,12 +187,11 @@ export default function FoodScanner() {
         setPhase("idle");
       }
     } catch (err) {
-      console.error('analyzeFood error:', err);
+      console.error('analyzeFood catch:', err);
       if (err instanceof Error && err.name === 'AbortError') {
-        setAnalysisError('解析がタイムアウトしました');
+        setAnalysisError('タイムアウト（45秒）。もう一度お試しください');
       } else {
-        const detail = err instanceof Error ? err.message : String(err);
-        setAnalysisError('通信エラーが発生しました: ' + detail);
+        setAnalysisError('通信エラー: ' + (err instanceof Error ? err.message : String(err)));
       }
       setPhase("idle");
     }
