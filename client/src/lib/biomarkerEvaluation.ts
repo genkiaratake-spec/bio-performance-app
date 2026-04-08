@@ -159,3 +159,89 @@ export function getCategoryScore(entries: BiomarkerEntry[]): {
 }
 
 export { DEFS as BIOMARKER_DEFS };
+
+/* ------------------------------------------------------------------ */
+/*  Range bar data (for WHOOP-style range visualization)               */
+/* ------------------------------------------------------------------ */
+export interface BiomarkerRange {
+  min: number;
+  sufficientLow?: number;
+  optimalLow: number;
+  optimalHigh: number;
+  sufficientHigh?: number;
+  max: number;
+}
+
+const RANGES: Record<string, BiomarkerRange> = {
+  hba1c:          { min: 4.0, sufficientLow: 5.0, optimalLow: 4.5, optimalHigh: 5.5, sufficientHigh: 5.9, max: 8.0 },
+  bloodSugar:     { min: 50, sufficientLow: 70, optimalLow: 70, optimalHigh: 99, sufficientHigh: 109, max: 150 },
+  homaIr:         { min: 0, optimalLow: 0, optimalHigh: 1.5, sufficientHigh: 2.4, max: 5.0 },
+  ldlCholesterol: { min: 40, optimalLow: 0, optimalHigh: 100, sufficientHigh: 129, max: 200 },
+  hdlCholesterol: { min: 20, sufficientLow: 50, optimalLow: 60, optimalHigh: 100, max: 120 },
+  triglycerides:  { min: 0, optimalLow: 0, optimalHigh: 100, sufficientHigh: 149, max: 300 },
+  apoB:           { min: 0, optimalLow: 0, optimalHigh: 80, sufficientHigh: 99, max: 160 },
+  lipoproteinA:   { min: 0, optimalLow: 0, optimalHigh: 30, sufficientHigh: 49, max: 100 },
+  hsCrp:          { min: 0, optimalLow: 0, optimalHigh: 0.5, sufficientHigh: 0.9, max: 5.0 },
+  vitaminD:       { min: 0, sufficientLow: 20, optimalLow: 40, optimalHigh: 60, sufficientHigh: 80, max: 100 },
+  ferritin:       { min: 0, sufficientLow: 20, optimalLow: 50, optimalHigh: 200, max: 400 },
+  vitaminB12:     { min: 0, sufficientLow: 400, optimalLow: 800, optimalHigh: 2000, max: 2500 },
+  homocysteine:   { min: 0, optimalLow: 0, optimalHigh: 8, sufficientHigh: 9.9, max: 20 },
+  folate:         { min: 0, sufficientLow: 5, optimalLow: 10, optimalHigh: 25, max: 40 },
+  zinc:           { min: 40, sufficientLow: 70, optimalLow: 80, optimalHigh: 120, max: 160 },
+  omega3Index:    { min: 0, sufficientLow: 4, optimalLow: 8, optimalHigh: 14, max: 18 },
+  calcium:        { min: 7, sufficientLow: 8.0, optimalLow: 8.5, optimalHigh: 10.5, sufficientHigh: 11, max: 12 },
+  tsh:            { min: 0, sufficientLow: 0.5, optimalLow: 1.0, optimalHigh: 2.5, sufficientHigh: 4.5, max: 8 },
+  ft3:            { min: 1.5, sufficientLow: 2.3, optimalLow: 3.0, optimalHigh: 4.0, sufficientHigh: 4.5, max: 6 },
+  ft4:            { min: 0.5, sufficientLow: 0.8, optimalLow: 1.0, optimalHigh: 1.5, sufficientHigh: 1.7, max: 2.5 },
+  tpoAntibody:    { min: 0, optimalLow: 0, optimalHigh: 35, sufficientHigh: 100, max: 300 },
+  cortisol:       { min: 0, sufficientLow: 5, optimalLow: 8, optimalHigh: 18, sufficientHigh: 22, max: 30 },
+  testosterone:   { min: 100, sufficientLow: 300, optimalLow: 500, optimalHigh: 900, max: 1200 },
+  dheas:          { min: 50, sufficientLow: 100, optimalLow: 200, optimalHigh: 400, max: 600 },
+  hemoglobin:     { min: 8, sufficientLow: 12, optimalLow: 14, optimalHigh: 17, sufficientHigh: 18, max: 20 },
+  hematocrit:     { min: 28, sufficientLow: 36, optimalLow: 40, optimalHigh: 50, sufficientHigh: 54, max: 60 },
+  rbc:            { min: 3.0, sufficientLow: 4.0, optimalLow: 4.5, optimalHigh: 5.5, sufficientHigh: 6.0, max: 7.0 },
+};
+
+export function getBiomarkerRange(key: string): BiomarkerRange | null {
+  return RANGES[key] || null;
+}
+
+export function getBarPosition(key: string, value: number): number {
+  const range = RANGES[key];
+  if (!range) return 50;
+  const clamped = Math.max(range.min, Math.min(range.max, value));
+  return ((clamped - range.min) / (range.max - range.min)) * 100;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Biomarker descriptions                                             */
+/* ------------------------------------------------------------------ */
+export const BIOMARKER_DESCRIPTIONS: Record<string, string> = {
+  hba1c: '過去2〜3ヶ月の平均血糖値を反映する指標。糖尿病リスクの評価に重要。',
+  bloodSugar: '空腹時の血糖値。インスリン抵抗性や糖代謝の基本指標。',
+  homaIr: 'インスリン抵抗性の指標。空腹時血糖とインスリンから算出。',
+  ldlCholesterol: '「悪玉コレステロール」。動脈硬化の主要リスク因子。',
+  hdlCholesterol: '「善玉コレステロール」。動脈から余分なコレステロールを回収する。',
+  triglycerides: '中性脂肪。食事やアルコールの影響を受けやすい。',
+  apoB: '動脈硬化リスクの最も正確な指標。LDLより予測力が高い。',
+  lipoproteinA: '遺伝的に決まる心血管リスク因子。LDLが正常でも高値の場合がある。',
+  hsCrp: '体内の慢性炎症レベルを検出。心血管疾患リスクの独立予測因子。',
+  vitaminD: '免疫・骨密度・気分に関与。日本人の約70%が不足。',
+  ferritin: '体内の鉄貯蔵量を反映。貧血がなくても低値なら鉄欠乏の可能性。',
+  vitaminB12: '神経機能・赤血球生成に必須。菜食・胃薬服用者で不足しやすい。',
+  homocysteine: '心血管・認知症リスクのマーカー。葉酸・B12不足で上昇。',
+  folate: '細胞分裂・DNA合成に必要。ホモシステインの代謝にも関与。',
+  zinc: '免疫・ホルモン・酵素反応に関与する必須ミネラル。',
+  omega3Index: '赤血球中のEPA+DHA割合。心血管・抗炎症の指標。',
+  calcium: '骨・筋肉・神経機能に必須。副甲状腺ホルモンと連動。',
+  tsh: '甲状腺機能の基本指標。代謝・エネルギー・体重に影響。',
+  ft3: '活性型甲状腺ホルモン。実際の代謝活性を反映。',
+  ft4: '甲状腺ホルモンの前駆体。T3に変換されて機能する。',
+  tpoAntibody: '甲状腺自己免疫の指標。橋本病のスクリーニングに使用。',
+  cortisol: 'ストレスホルモン。朝に高く夕方に低下するのが正常。',
+  testosterone: '筋肉量・エネルギー・気分に直結。40代以降で低下傾向。',
+  dheas: '副腎由来のホルモン。テストステロンの前駆体。加齢で低下。',
+  hemoglobin: '酸素運搬能力の指標。貧血のスクリーニングに使用。',
+  hematocrit: '血液中の赤血球の割合。酸素運搬能力と関連。',
+  rbc: '赤血球数。酸素運搬・貧血の基本指標。',
+};

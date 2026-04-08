@@ -1,1183 +1,834 @@
-import DashboardLayout from "@/components/DashboardLayout";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Info, TrendingUp, Upload as UploadIcon, CheckCircle2, ChevronDown, Zap } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { useLocation } from "wouter";
-import { useState, useEffect, useCallback, useRef } from "react";
-import { getRecentDailyLogs, DailyFoodLog } from "../utils/mealLog";
-import { evaluateBiomarkers, groupByCategory, getCategoryScore } from '../lib/biomarkerEvaluation';
-import { getHighPriorityTests } from '../lib/additionalTestRecommendations';
-import { getHealthHistory, compareLatestTwo, saveHealthCheck } from '../lib/healthHistory';
-import { CATEGORY_LABELS } from '../types/healthCheck';
-import type { HealthCheckData, BiomarkerEntry, HealthCategory } from '../types/healthCheck';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation } from 'wouter';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, SlidersHorizontal, ChevronRight, FileText, Upload, ArrowRight } from 'lucide-react';
+import { evaluateBiomarkers, getCategoryScore, getBarPosition, getBiomarkerRange, BIOMARKER_DEFS } from '../lib/biomarkerEvaluation';
+import { getHealthHistory, compareLatestTwo } from '../lib/healthHistory';
+import type { BiomarkerEntry } from '../types/healthCheck';
+import BiomarkerDetail from '../components/BiomarkerDetail';
 
-/* ------------------------------------------------------------------ */
-/*  Types                                                              */
-/* ------------------------------------------------------------------ */
-interface Marker {
-  name: string;
-  value: string;
-  unit: string;
-  reference_range: string;
-  status: "ok" | "borderline" | "low";
-  note: string;
-}
+const API_BASE = typeof window !== 'undefined' && window.location.protocol === 'capacitor:'
+  ? 'https://bio-performance-app.vercel.app'
+  : '';
 
-interface BloodTestResults {
-  markers: Marker[];
-  overall_assessment: string;
-  dietary_advice: string;
-  supplements: any[];
-  savedAt?: string;
-}
-
-interface HistoryEntry {
-  uploadedAt: string;
-  data: BloodTestResults;
-}
-
-/* ------------------------------------------------------------------ */
-/*  Config                                                             */
-/* ------------------------------------------------------------------ */
-const STATUS_CONFIG = {
-  ok:         { label: "正常",   color: "text-teal",        bg: "bg-teal/10",        border: "border-teal/20" },
-  borderline: { label: "要確認", color: "text-amber",       bg: "bg-amber/10",       border: "border-amber/20" },
-  low:        { label: "要確認", color: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/20" },
-};
-
-const BLOOD_TEST_KEY = "bloodTestResults";
-const HISTORY_KEY    = "healthCheckHistory";
-const HEALTH_CHECK_KEY = "healthCheckData";
-const INSIGHT_DAYS   = 30;
-
-const API_BASE = typeof window !== "undefined" && window.location.protocol === "capacitor:"
-  ? "https://bio-performance-app.vercel.app" : "";
-
-const ANALYSIS_STEPS = [
-  "ファイルを読み込み中...",
-  "血液検査データを識別中...",
-  "バイオマーカーを解析中...",
-  "サプリメントを最適化中...",
-  "レポートを生成中...",
-];
-
-/* Biomarker status colors */
-const BM_STATUS_COLORS: Record<string, string> = {
-  optimal: '#1D9E75',
-  sufficient: '#185FA5',
-  out_of_range: '#E24B4A',
-  unavailable: '#666',
+const COLORS = {
+  optimal: '#1DB97D',
+  sufficient: '#5a8ccc',
+  outOfRange: '#d4913a',
+  unavailable: '#2a2a34',
 };
 
 /* ------------------------------------------------------------------ */
-/*  Helpers                                                            */
+/*  Extract health data from bloodTestResults if healthCheckData       */
+/*  is not available                                                   */
 /* ------------------------------------------------------------------ */
-async function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve((reader.result as string).split(",")[1]);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function addToHistory(data: BloodTestResults) {
-  const raw = localStorage.getItem(HISTORY_KEY);
-  let history: HistoryEntry[] = [];
-  try { if (raw) history = JSON.parse(raw); } catch {}
-  history.unshift({ uploadedAt: new Date().toISOString(), data });
-  if (history.length > 10) history = history.slice(0, 10);
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-}
-
-/* ------------------------------------------------------------------ */
-/*  Insight types                                                      */
-/* ------------------------------------------------------------------ */
-interface Insight {
-  icon: string;
-  title: string;
-  message: string;
-  actions: string[];
-  color: "amber" | "red" | "teal";
-}
-
-/* ------------------------------------------------------------------ */
-/*  Insight calculation (rule-based, no API)                           */
-/* ------------------------------------------------------------------ */
-function calcInsights(markers: Marker[], logs: DailyFoodLog[], userProfile: any): {
-  insights: Insight[];
-  daysRecorded: number;
-} {
-  const daysRecorded = logs.length;
-
-  if (daysRecorded === 0) return { insights: [], daysRecorded: 0 };
-
-  const proteinGoal = parseInt(userProfile?.dailyProtein || '150');
-  const fatGoal     = parseInt(userProfile?.dailyFat     || '65');
-  const carbsGoal   = parseInt(userProfile?.dailyCarbs   || '260');
-
-  const avgProteinPct = logs.reduce((s, d) => s + (proteinGoal > 0 ? (d.protein  / proteinGoal)  * 100 : 100), 0) / daysRecorded;
-  const avgFatPct     = logs.reduce((s, d) => s + (fatGoal    > 0 ? (d.fat       / fatGoal)      * 100 : 100), 0) / daysRecorded;
-  const avgCarbsPct   = logs.reduce((s, d) => s + (carbsGoal  > 0 ? (d.carbs     / carbsGoal)    * 100 : 100), 0) / daysRecorded;
-
-  const isLow         = (name: string) => markers.some(m => m.status === 'low'       && m.name.includes(name));
-  const isBorderline  = (name: string) => markers.some(m => m.status === 'borderline' && m.name.includes(name));
-
-  const insights: Insight[] = [];
-
-  if (isLow('フェリチン') || isLow('鉄')) {
-    if (avgProteinPct < 70) {
-      insights.push({
-        icon: '🥩', color: 'amber',
-        title: '鉄分・タンパク質関連の指標に着目',
-        message: `過去${daysRecorded}日のタンパク質平均達成率は${Math.round(avgProteinPct)}%です。鉄分を含む食品の摂取を意識してみてください。気になる場合は医療機関での確認をお勧めします。`,
-        actions: ['赤身牛肉', 'レバー', 'ほうれん草・あさり'],
-      });
-    } else {
-      insights.push({
-        icon: '🐟', color: 'amber',
-        title: '鉄関連指標：食事の工夫が参考になります',
-        message: `フェリチン/鉄関連の指標に着目が必要です。タンパク質の摂取量は十分ですが、非ヘム鉄の吸収にはビタミンCとの同時摂取が参考になります。気になる場合は医療機関での確認をお勧めします。`,
-        actions: ['赤身肉（ヘム鉄）', 'ほうれん草＋レモン', '豆腐・豆類'],
-      });
+function extractHealthDataFromBloodTest(): any {
+  try {
+    const raw = localStorage.getItem('bloodTestResults');
+    if (!raw) return null;
+    const bt = JSON.parse(raw);
+    if (!bt.markers || bt.markers.length === 0) return null;
+    const result: any = {};
+    const markers = bt.markers;
+    const mapping: Record<string, string[]> = {
+      ldlCholesterol: ['LDL', 'LDLコレステロール'],
+      hdlCholesterol: ['HDL', 'HDLコレステロール'],
+      triglycerides: ['中性脂肪', 'TG'],
+      bloodSugar: ['血糖', '空腹時血糖'],
+      hba1c: ['HbA1c'],
+      ferritin: ['フェリチン'],
+      vitaminD: ['ビタミンD', '25(OH)D'],
+      crp: ['CRP'],
+      hsCrp: ['hs-CRP', '高感度CRP'],
+      hemoglobin: ['ヘモグロビン', 'Hb'],
+      vitaminB12: ['ビタミンB12', 'B12'],
+      zinc: ['亜鉛'],
+      tsh: ['TSH'],
+      cortisol: ['コルチゾール'],
+      testosterone: ['テストステロン'],
+    };
+    for (const [key, aliases] of Object.entries(mapping)) {
+      for (const alias of aliases) {
+        const marker = markers.find((m: any) => m.name?.includes(alias));
+        if (marker) {
+          const n = parseFloat(marker.value);
+          if (!isNaN(n)) {
+            result[key] = n;
+            break;
+          }
+        }
+      }
     }
+    return Object.keys(result).length > 0 ? result : null;
+  } catch {
+    return null;
   }
-
-  if (isLow('ビタミンD') || isLow('Vitamin D')) {
-    insights.push({
-      icon: '☀️', color: 'amber',
-      title: 'ビタミンD関連指標：食事での工夫が参考になります',
-      message: `ビタミンD関連の指標に着目が必要です。日照や食事からのビタミンD摂取を意識してみてください。気になる場合は医療機関での確認をお勧めします。`,
-      actions: ['鮭・サバ・イワシ', 'きのこ類（干しシイタケ）', '卵（特に卵黄）'],
-    });
-  }
-
-  if (isBorderline('中性脂肪') || isBorderline('トリグリセリド')) {
-    if (avgCarbsPct > 120) {
-      insights.push({
-        icon: '🍚', color: 'red',
-        title: '糖質摂取量：要確認',
-        message: `過去${daysRecorded}日の炭水化物平均達成率は${Math.round(avgCarbsPct)}%です。中性脂肪関連指標に注意が必要です。炭水化物の量を意識してみてください。気になる場合は医療機関での確認をお勧めします。`,
-        actions: ['白米→玄米・雑穀米に変更', '菓子・甘い飲料を控える', '野菜・海藻から食べる'],
-      });
-    }
-  }
-
-  if (isBorderline('LDL') || isBorderline('コレステロール')) {
-    if (avgFatPct > 120) {
-      insights.push({
-        icon: '🫀', color: 'red',
-        title: '脂質摂取量：要確認',
-        message: `過去${daysRecorded}日の脂質平均達成率は${Math.round(avgFatPct)}%です。LDLコレステロール関連指標に注意が必要です。脂質の量を意識してみてください。気になる場合は医療機関での確認をお勧めします。`,
-        actions: ['揚げ物を週2回以下に', '肉の脂身・バターを控える', 'オリーブオイル・魚油に置き換える'],
-      });
-    }
-  }
-
-  if (isLow('亜鉛') || isLow('マグネシウム')) {
-    if (avgProteinPct < 80) {
-      insights.push({
-        icon: '🥜', color: 'teal',
-        title: 'ミネラル関連指標：食事の工夫が参考になります',
-        message: `過去${daysRecorded}日のタンパク質平均達成率は${Math.round(avgProteinPct)}%です。タンパク質を含む食品を意識すると、亜鉛・マグネシウムの摂取にも寄与が期待できます。`,
-        actions: ['牡蠣・牛赤身肉', 'ナッツ類（アーモンド・カシューナッツ）', '豆腐・枝豆・レンズ豆'],
-      });
-    }
-  }
-
-  return { insights, daysRecorded };
 }
 
 /* ------------------------------------------------------------------ */
-/*  Upload Zone component                                              */
+/*  Client-side insight generation                                     */
 /* ------------------------------------------------------------------ */
-function UploadZone({ onComplete }: { onComplete: (data: BloodTestResults) => void }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [analyzeStep, setAnalyzeStep] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+function generateInsight(entries: BiomarkerEntry[]): string {
+  const oor = entries.filter(e => e.status === 'out_of_range');
+  const suf = entries.filter(e => e.status === 'sufficient');
+  if (oor.length === 0 && suf.length === 0) {
+    return 'すべてのバイオマーカーが至適域です。この状態を維持しましょう。';
+  }
+  if (oor.length > 0) {
+    const names = oor.slice(0, 3).map(e => e.label).join('・');
+    return `${names}が要注意域です。サプリメント推奨と食事改善で改善が期待できます。詳細を確認しましょう。`;
+  }
+  return `${suf.length}項目が充足域です。至適域を目指してさらなる改善を検討しましょう。`;
+}
 
-  const handleFile = useCallback((f: File) => {
-    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
-    if (!allowed.includes(f.type) && !f.name.match(/\.(pdf|jpg|jpeg|png)$/i)) {
-      setError("PDF・JPG・PNG ファイルのみ対応しています");
-      return;
+/* ------------------------------------------------------------------ */
+/*  Inline RangeBar component                                          */
+/* ------------------------------------------------------------------ */
+function RangeBar({ bioKey, value, compact = false }: { bioKey: string; value: number; compact?: boolean }) {
+  const range = getBiomarkerRange(bioKey);
+  if (!range) return null;
+  const pos = getBarPosition(bioKey, value);
+  const h = compact ? 4 : 8;
+  const total = range.max - range.min;
+  if (total <= 0) return null;
+
+  const lowOutEnd = range.sufficientLow ?? range.optimalLow;
+  const sufLowStart = range.sufficientLow;
+  const sufHighEnd = range.sufficientHigh;
+  const highOutStart = range.sufficientHigh ?? range.optimalHigh;
+
+  const lowOutW = ((lowOutEnd - range.min) / total) * 100;
+  const sufLowW = sufLowStart != null ? ((range.optimalLow - sufLowStart) / total) * 100 : 0;
+  const optimalW = ((range.optimalHigh - range.optimalLow) / total) * 100;
+  const sufHighW = sufHighEnd != null ? ((sufHighEnd - range.optimalHigh) / total) * 100 : 0;
+  const highOutW = ((range.max - highOutStart) / total) * 100;
+
+  const segments: { width: number; color: string }[] = [];
+  if (lowOutW > 0) segments.push({ width: lowOutW, color: '#3a3018' });
+  if (sufLowW > 0) segments.push({ width: sufLowW, color: '#1e3a2e' });
+  if (optimalW > 0) segments.push({ width: optimalW, color: '#1DB97D' });
+  if (sufHighW > 0) segments.push({ width: sufHighW, color: '#1e3a2e' });
+  if (highOutW > 0) segments.push({ width: highOutW, color: '#3a3018' });
+
+  return (
+    <div style={{ position: 'relative', width: compact ? 120 : '100%' }}>
+      <div style={{ display: 'flex', height: h, borderRadius: h / 2, overflow: 'hidden' }}>
+        {segments.map((seg, i) => (
+          <div
+            key={i}
+            style={{
+              width: `${seg.width}%`,
+              backgroundColor: seg.color,
+              minWidth: 1,
+            }}
+          />
+        ))}
+      </div>
+      <div
+        style={{
+          position: 'absolute',
+          top: -6,
+          left: `${pos}%`,
+          transform: 'translateX(-50%)',
+        }}
+      >
+        <div
+          style={{
+            width: 0,
+            height: 0,
+            borderLeft: '4px solid transparent',
+            borderRight: '4px solid transparent',
+            borderTop: '6px solid #fff',
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sort helpers                                                       */
+/* ------------------------------------------------------------------ */
+type SortMode = 'oor-first' | 'optimal-first' | 'alpha' | 'delta';
+
+const STATUS_ORDER_OOR: Record<string, number> = {
+  out_of_range: 0,
+  sufficient: 1,
+  optimal: 2,
+  unavailable: 3,
+};
+const STATUS_ORDER_OPT: Record<string, number> = {
+  optimal: 0,
+  sufficient: 1,
+  out_of_range: 2,
+  unavailable: 3,
+};
+
+function sortEntries(entries: BiomarkerEntry[], mode: SortMode, deltas: Record<string, number>): BiomarkerEntry[] {
+  const sorted = [...entries];
+  switch (mode) {
+    case 'oor-first':
+      sorted.sort((a, b) => (STATUS_ORDER_OOR[a.status] ?? 9) - (STATUS_ORDER_OOR[b.status] ?? 9));
+      break;
+    case 'optimal-first':
+      sorted.sort((a, b) => (STATUS_ORDER_OPT[a.status] ?? 9) - (STATUS_ORDER_OPT[b.status] ?? 9));
+      break;
+    case 'alpha':
+      sorted.sort((a, b) => a.label.localeCompare(b.label));
+      break;
+    case 'delta':
+      sorted.sort((a, b) => {
+        const da = Math.abs(deltas[a.key] ?? 0);
+        const db = Math.abs(deltas[b.key] ?? 0);
+        return db - da;
+      });
+      break;
+  }
+  return sorted;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Status badge config                                                */
+/* ------------------------------------------------------------------ */
+const STATUS_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
+  optimal: { bg: '#0d2e24', color: '#1DB97D', label: '\u2713 Optimal' },
+  sufficient: { bg: '#1a1f2e', color: '#5a8ccc', label: '\u25CF Sufficient' },
+  out_of_range: { bg: '#2a1f0e', color: '#d4913a', label: '! Out of Range' },
+  unavailable: { bg: '#1e1e26', color: '#555560', label: '\u2014 未測定' },
+};
+
+/* ================================================================== */
+/*  Main component                                                     */
+/* ================================================================== */
+export default function Analysis() {
+  const [, navigate] = useLocation();
+  const [healthData, setHealthData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortMode, setSortMode] = useState<SortMode>('oor-first');
+  const [showSortDropdown, setShowSortDropdown] = useState(false);
+  const [selectedBiomarker, setSelectedBiomarker] = useState<BiomarkerEntry | null>(null);
+
+  /* ---- Load data ---- */
+  useEffect(() => {
+    let data: any = null;
+    try {
+      const raw = localStorage.getItem('healthCheckData');
+      if (raw) data = JSON.parse(raw);
+    } catch { /* ignore */ }
+    if (!data) {
+      data = extractHealthDataFromBloodTest();
     }
-    setFile(f);
-    setError(null);
+    setHealthData(data);
+    setLoading(false);
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
-  }, [handleFile]);
+  /* ---- Derived values ---- */
+  const entries = useMemo(() => {
+    if (!healthData) return [];
+    return evaluateBiomarkers(healthData);
+  }, [healthData]);
 
-  const handleAnalyze = async () => {
-    if (!file) return;
-    setUploading(true);
-    setAnalyzeStep(0);
-    setError(null);
+  const score = useMemo(() => getCategoryScore(entries), [entries]);
 
-    const timer = setInterval(() => {
-      setAnalyzeStep((prev) => {
-        if (prev >= ANALYSIS_STEPS.length - 1) { clearInterval(timer); return prev; }
-        return prev + 1;
-      });
-    }, 5000);
+  const comparison = useMemo(() => compareLatestTwo(), []);
 
-    try {
-      const fileBase64 = await fileToBase64(file);
-      const mediaType = file.type || (file.name.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
-
-      const res = await fetch(`${API_BASE}/api/analyze-blood-test`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileBase64, mediaType }),
-      });
-
-      clearInterval(timer);
-      setAnalyzeStep(ANALYSIS_STEPS.length - 1);
-
-      const json = await res.json();
-      if (json.success && json.data) {
-        const toSave = { ...json.data, savedAt: new Date().toISOString() };
-        // Save current as active, push old to history
-        const oldRaw = localStorage.getItem(BLOOD_TEST_KEY);
-        if (oldRaw) {
-          try {
-            const oldData = JSON.parse(oldRaw);
-            if (oldData.markers) addToHistory(oldData);
-          } catch {}
-        }
-        localStorage.setItem(BLOOD_TEST_KEY, JSON.stringify(toSave));
-
-        // Also save healthCheckData if present
-        if (json.data.healthCheckData) {
-          saveHealthCheck(json.data.healthCheckData);
-        }
-
-        setTimeout(() => {
-          setUploading(false);
-          onComplete(toSave);
-        }, 600);
-      } else {
-        throw new Error(json.error || "解析に失敗しました");
+  const deltas = useMemo(() => {
+    const d: Record<string, number> = {};
+    if (comparison) {
+      for (const [key, change] of Object.entries(comparison.changes)) {
+        if (change.delta != null) d[key] = change.delta;
       }
-    } catch (err) {
-      clearInterval(timer);
-      setUploading(false);
-      setError(err instanceof Error ? err.message : String(err));
     }
-  };
+    return d;
+  }, [comparison]);
 
-  if (uploading) {
+  const insight = useMemo(() => {
+    const cached = sessionStorage.getItem('labsInsight');
+    if (cached) return cached;
+    const text = generateInsight(entries);
+    sessionStorage.setItem('labsInsight', text);
+    return text;
+  }, [entries]);
+
+  const history = useMemo(() => getHealthHistory(), []);
+
+  const lastUpdatedDate = useMemo(() => {
+    if (history.length === 0) return null;
+    try {
+      const d = new Date(history[0].uploadedAt);
+      return `${d.getMonth() + 1}月${d.getDate()}日`;
+    } catch {
+      return null;
+    }
+  }, [history]);
+
+  /* ---- Filter + sort ---- */
+  const filteredEntries = useMemo(() => {
+    let list = entries;
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      list = list.filter(e => e.label.toLowerCase().includes(q) || e.key.toLowerCase().includes(q));
+    }
+    return sortEntries(list, sortMode, deltas);
+  }, [entries, searchQuery, sortMode, deltas]);
+
+  /* ---- Group entries by status ---- */
+  const groupedEntries = useMemo(() => {
+    const groups: { status: string; label: string; color: string; entries: BiomarkerEntry[] }[] = [
+      { status: 'out_of_range', label: 'Out of Range', color: COLORS.outOfRange, entries: [] },
+      { status: 'sufficient', label: 'Sufficient', color: COLORS.sufficient, entries: [] },
+      { status: 'optimal', label: 'Optimal', color: COLORS.optimal, entries: [] },
+      { status: 'unavailable', label: 'Unavailable', color: COLORS.unavailable, entries: [] },
+    ];
+    for (const entry of filteredEntries) {
+      const group = groups.find(g => g.status === entry.status);
+      if (group) group.entries.push(entry);
+    }
+    return groups.filter(g => g.entries.length > 0);
+  }, [filteredEntries]);
+
+  /* ---- Previous value helper ---- */
+  const getPreviousValue = useCallback((key: string): number | null => {
+    if (!comparison) return null;
+    const change = comparison.changes[key];
+    return change?.previous ?? null;
+  }, [comparison]);
+
+  /* ---- Scroll to biomarker list ---- */
+  const scrollToList = useCallback(() => {
+    const el = document.getElementById('biomarker-list');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  }, []);
+
+  /* ---- Loading state ---- */
+  if (loading) {
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="elevated-card rounded-2xl p-8 flex flex-col items-center text-center">
-        <div className="relative w-16 h-16 mb-6">
-          <div className="absolute inset-0 border-4 border-primary/15 rounded-full" />
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
-            className="absolute inset-0 border-4 border-transparent border-t-primary rounded-full"
-          />
-          <div className="absolute inset-0 flex items-center justify-center text-2xl">🔬</div>
-        </div>
-        <h2 className="text-lg font-bold mb-2">AI解析中...</h2>
-        <p className="text-xs text-muted-foreground mb-6">30秒ほどかかる場合があります</p>
-        <div className="w-full max-w-xs space-y-2">
-          {ANALYSIS_STEPS.map((label, i) => {
-            const done = i < analyzeStep;
-            const active = i === analyzeStep;
-            return (
-              <div key={label} className="flex items-center gap-3 text-left">
-                <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 ${
-                  done ? 'bg-primary text-primary-foreground' : active ? 'bg-primary/20 border-2 border-primary' : 'bg-secondary'
-                }`}>
-                  {done ? '✓' : ''}
-                </div>
-                <span className={`text-xs ${done ? 'text-primary' : active ? 'text-foreground font-semibold' : 'text-muted-foreground/40'}`}>
-                  {label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </motion.div>
+      <div style={{ height: '100vh', background: '#0a0a0f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ color: '#555', fontSize: 14 }}>Loading...</div>
+      </div>
     );
   }
 
-  return (
-    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="elevated-card rounded-2xl p-8 flex flex-col items-center text-center">
-      <div className="text-5xl mb-4">🔬</div>
-      <h2 className="text-xl font-bold mb-2">健康診断・血液検査データが未登録です</h2>
-      <p className="text-sm text-muted-foreground mb-6 max-w-sm leading-relaxed">
-        健康診断・血液検査の結果をアップロードすると、AIがバイオマーカーを解析してこの画面に表示します。複数ページのPDFも読み取り可能です。
-      </p>
-
-      {error && (
-        <div className="w-full max-w-sm mb-4 p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      <label
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={handleDrop}
-        className={`w-full max-w-sm rounded-xl border-2 border-dashed p-6 cursor-pointer transition-all mb-4 block ${
-          file ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
-        }`}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,.jpg,.jpeg,.png,image/*"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-          className="hidden"
-        />
-        {file ? (
-          <div className="flex flex-col items-center gap-2">
-            <CheckCircle2 className="w-8 h-8 text-primary" />
-            <p className="text-sm font-semibold text-primary">{file.name}</p>
-            <p className="text-[11px] text-muted-foreground">{(file.size / 1024).toFixed(0)} KB · タップして変更</p>
+  /* ---- No data state ---- */
+  if (!healthData) {
+    return (
+      <div style={{ height: '100vh', overflowY: 'auto', background: '#0a0a0f', color: '#fff', padding: '52px 20px 100px' }}>
+        <div
+          style={{
+            background: '#111118',
+            border: '1px solid #222',
+            borderRadius: 16,
+            padding: '40px 24px',
+            textAlign: 'center',
+            marginTop: 40,
+          }}
+        >
+          <div style={{ fontSize: 48, marginBottom: 16 }}>🔬</div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+            血液検査データがありません
           </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2">
-            <UploadIcon className="w-8 h-8 text-muted-foreground" />
-            <p className="text-sm text-muted-foreground">PDF・JPG・PNGをドロップまたはタップ</p>
+          <div style={{ fontSize: 13, color: '#888', marginBottom: 24, lineHeight: 1.5 }}>
+            健康診断・血液検査の結果をアップロードすると、バイオマーカーの詳細分析が表示されます。
+          </div>
+          <button
+            onClick={() => navigate('/upload')}
+            style={{
+              background: '#a78bfa',
+              color: '#fff',
+              border: 'none',
+              borderRadius: 12,
+              padding: '12px 32px',
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            データをアップロード
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /* ---- SVG circular gauge calculations ---- */
+  const size = 140;
+  const sw = 10;
+  const r = (size - sw) / 2;
+  const circ = 2 * Math.PI * r;
+  const measured = score.measured;
+  const total = score.total;
+  const unmeasured = total - measured;
+
+  const optCount = score.optimal;
+  const sufCount = score.sufficient;
+  const oorCount = score.outOfRange;
+
+  const optArc = total > 0 ? (optCount / total) * circ : 0;
+  const sufArc = total > 0 ? (sufCount / total) * circ : 0;
+  const oorArc = total > 0 ? (oorCount / total) * circ : 0;
+  const unmArc = total > 0 ? (unmeasured / total) * circ : 0;
+
+  const optOffset = 0;
+  const sufOffset = optArc;
+  const oorOffset = optArc + sufArc;
+  const unmOffset = optArc + sufArc + oorArc;
+
+  /* ================================================================== */
+  /*  Render                                                             */
+  /* ================================================================== */
+  return (
+    <div style={{ height: '100vh', overflowY: 'auto', background: '#0a0a0f', color: '#fff', padding: '52px 20px 100px' }}>
+
+      {/* ---- Section 1: Header ---- */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 18, fontWeight: 700 }}>Labs Summary</div>
+        {lastUpdatedDate && (
+          <div style={{ fontSize: 11, color: '#777', marginTop: 4 }}>
+            Last updated: {lastUpdatedDate}
           </div>
         )}
-      </label>
-
-      <Button
-        onClick={handleAnalyze}
-        disabled={!file}
-        className="w-full max-w-sm bg-primary text-primary-foreground hover:bg-primary/90 gap-2 h-11"
-      >
-        <Zap className="w-4 h-4" />
-        AI解析を開始する
-      </Button>
-      <p className="text-[11px] text-muted-foreground mt-3">※ データはAI解析後に削除されます</p>
-    </motion.div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Re-upload modal                                                    */
-/* ------------------------------------------------------------------ */
-function ReUploadModal({ onComplete, onClose }: { onComplete: (data: BloodTestResults) => void; onClose: () => void }) {
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [analyzeStep, setAnalyzeStep] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleFile = useCallback((f: File) => {
-    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/jpg"];
-    if (!allowed.includes(f.type) && !f.name.match(/\.(pdf|jpg|jpeg|png)$/i)) {
-      setError("PDF・JPG・PNG ファイルのみ対応しています");
-      return;
-    }
-    setFile(f);
-    setError(null);
-  }, []);
-
-  const handleAnalyze = async () => {
-    if (!file) return;
-    setUploading(true);
-    setAnalyzeStep(0);
-    setError(null);
-
-    const timer = setInterval(() => {
-      setAnalyzeStep((prev) => {
-        if (prev >= ANALYSIS_STEPS.length - 1) { clearInterval(timer); return prev; }
-        return prev + 1;
-      });
-    }, 5000);
-
-    try {
-      const fileBase64 = await fileToBase64(file);
-      const mediaType = file.type || (file.name.endsWith(".pdf") ? "application/pdf" : "image/jpeg");
-
-      const res = await fetch(`${API_BASE}/api/analyze-blood-test`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileBase64, mediaType }),
-      });
-
-      clearInterval(timer);
-      setAnalyzeStep(ANALYSIS_STEPS.length - 1);
-
-      const json = await res.json();
-      if (json.success && json.data) {
-        const toSave = { ...json.data, savedAt: new Date().toISOString() };
-        const oldRaw = localStorage.getItem(BLOOD_TEST_KEY);
-        if (oldRaw) {
-          try {
-            const oldData = JSON.parse(oldRaw);
-            if (oldData.markers) addToHistory(oldData);
-          } catch {}
-        }
-        localStorage.setItem(BLOOD_TEST_KEY, JSON.stringify(toSave));
-
-        // Also save healthCheckData if present
-        if (json.data.healthCheckData) {
-          saveHealthCheck(json.data.healthCheckData);
-        }
-
-        setTimeout(() => {
-          setUploading(false);
-          onComplete(toSave);
-        }, 600);
-      } else {
-        throw new Error(json.error || "解析に失敗しました");
-      }
-    } catch (err) {
-      clearInterval(timer);
-      setUploading(false);
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: -10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="elevated-card rounded-xl p-5 mb-6 border border-primary/20"
-    >
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm font-bold">血液検査データを再アップロード</p>
-        <button onClick={onClose} className="text-xs text-muted-foreground hover:text-foreground">✕ 閉じる</button>
       </div>
 
-      {uploading ? (
-        <div className="flex flex-col items-center py-4">
-          <div className="relative w-12 h-12 mb-4">
-            <div className="absolute inset-0 border-4 border-primary/15 rounded-full" />
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1.1, repeat: Infinity, ease: "linear" }}
-              className="absolute inset-0 border-4 border-transparent border-t-primary rounded-full"
+      {/* ---- Section 2: Circular Gauge + Status Numbers ---- */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24 }}>
+
+        {/* Left: SVG gauge */}
+        <div style={{ flexShrink: 0 }}>
+          <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            {/* Background circle */}
+            <circle
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              fill="none"
+              stroke="#2a2a34"
+              strokeWidth={sw}
             />
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {ANALYSIS_STEPS[Math.min(analyzeStep, ANALYSIS_STEPS.length - 1)]}
-          </p>
-        </div>
-      ) : (
-        <>
-          {error && (
-            <div className="mb-3 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20 text-xs text-destructive">
-              {error}
-            </div>
-          )}
-          <label
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-            className={`block w-full rounded-lg border-2 border-dashed p-4 cursor-pointer transition-all mb-3 ${
-              file ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/30'
-            }`}
-          >
-            <input
-              type="file"
-              accept=".pdf,.jpg,.jpeg,.png,image/*"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
-              className="hidden"
-            />
-            {file ? (
-              <div className="flex items-center gap-2 justify-center">
-                <CheckCircle2 className="w-4 h-4 text-primary" />
-                <span className="text-xs font-semibold text-primary">{file.name}</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 justify-center">
-                <UploadIcon className="w-4 h-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">PDF・JPG・PNGを選択</span>
-              </div>
+            {/* Optimal arc (green) */}
+            {optArc > 0 && (
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                fill="none"
+                stroke={COLORS.optimal}
+                strokeWidth={sw}
+                strokeDasharray={`${optArc} ${circ - optArc}`}
+                strokeDashoffset={-optOffset}
+                strokeLinecap="round"
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              />
             )}
-          </label>
-          <Button
-            onClick={handleAnalyze}
-            disabled={!file}
-            size="sm"
-            className="w-full bg-primary text-primary-foreground hover:bg-primary/90 gap-2"
-          >
-            <Zap className="w-3.5 h-3.5" />
-            AI解析を開始する
-          </Button>
-        </>
-      )}
-    </motion.div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  History section                                                    */
-/* ------------------------------------------------------------------ */
-function HistorySection() {
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [expanded, setExpanded] = useState(false);
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
-
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(HISTORY_KEY);
-      if (raw) setHistory(JSON.parse(raw));
-    } catch {}
-  }, []);
-
-  if (history.length === 0) return null;
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }} className="elevated-card rounded-xl p-5 mb-6">
-      <button onClick={() => setExpanded(!expanded)} className="w-full flex items-center justify-between">
-        <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">過去の健診データ</p>
-        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} />
-      </button>
-      <AnimatePresence>
-        {expanded && (
-          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
-            <div className="mt-3 space-y-2">
-              {history.map((entry, i) => {
-                const date = new Date(entry.uploadedAt);
-                const dateStr = date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'short', day: 'numeric' });
-                const okCount = entry.data.markers?.filter(m => m.status === 'ok').length ?? 0;
-                const totalCount = entry.data.markers?.length ?? 0;
-                const isExpanded = expandedIdx === i;
-                return (
-                  <div key={i} className="rounded-lg bg-secondary/40 overflow-hidden">
-                    <button
-                      onClick={() => setExpandedIdx(isExpanded ? null : i)}
-                      className="w-full flex items-center justify-between p-3 text-left"
-                    >
-                      <div>
-                        <p className="text-xs font-semibold text-foreground">{dateStr}</p>
-                        <p className="text-[10px] text-muted-foreground">{okCount}/{totalCount} 正常</p>
-                      </div>
-                      <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
-                    </button>
-                    <AnimatePresence>
-                      {isExpanded && (
-                        <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
-                          <div className="px-3 pb-3 space-y-1">
-                            {entry.data.overall_assessment && (
-                              <p className="text-[11px] text-muted-foreground leading-relaxed mb-2">{entry.data.overall_assessment}</p>
-                            )}
-                            {entry.data.markers?.map((m, j) => {
-                              const sc = STATUS_CONFIG[m.status] ?? STATUS_CONFIG.ok;
-                              return (
-                                <div key={j} className="flex items-center justify-between py-1">
-                                  <span className="text-[11px] text-foreground">{m.name}</span>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold text-foreground">{m.value} <span className="text-[9px] text-muted-foreground font-normal">{m.unit}</span></span>
-                                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${sc.bg} ${sc.color}`}>{sc.label}</span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Biomarker Category Detail (accordion)                              */
-/* ------------------------------------------------------------------ */
-function CategoryDetailSection({ entries, grouped }: { entries: BiomarkerEntry[]; grouped: Record<HealthCategory, BiomarkerEntry[]> }) {
-  const categories = (Object.keys(CATEGORY_LABELS) as HealthCategory[]).filter(
-    cat => grouped[cat] && grouped[cat].length > 0
-  );
-  const [expandedCats, setExpandedCats] = useState<Set<HealthCategory>>(new Set(categories));
-
-  const toggleCat = (cat: HealthCategory) => {
-    setExpandedCats(prev => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat); else next.add(cat);
-      return next;
-    });
-  };
-
-  const statusLabel = (s: string) => {
-    switch (s) {
-      case 'optimal': return '至適';
-      case 'sufficient': return '許容';
-      case 'out_of_range': return '要注意';
-      default: return '未測定';
-    }
-  };
-
-  return (
-    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.18 }} className="mb-6 space-y-3">
-      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">カテゴリ別バイオマーカー詳細</p>
-      {categories.map(cat => {
-        const catEntries = grouped[cat];
-        const isOpen = expandedCats.has(cat);
-        return (
-          <div key={cat} className="elevated-card rounded-xl overflow-hidden">
-            <button
-              onClick={() => toggleCat(cat)}
-              className="w-full flex items-center justify-between p-4"
+            {/* Sufficient arc (blue) */}
+            {sufArc > 0 && (
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                fill="none"
+                stroke={COLORS.sufficient}
+                strokeWidth={sw}
+                strokeDasharray={`${sufArc} ${circ - sufArc}`}
+                strokeDashoffset={-sufOffset}
+                strokeLinecap="round"
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              />
+            )}
+            {/* Out of range arc (orange) */}
+            {oorArc > 0 && (
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                fill="none"
+                stroke={COLORS.outOfRange}
+                strokeWidth={sw}
+                strokeDasharray={`${oorArc} ${circ - oorArc}`}
+                strokeDashoffset={-oorOffset}
+                strokeLinecap="round"
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              />
+            )}
+            {/* Unmeasured arc (gray) */}
+            {unmArc > 0 && (
+              <circle
+                cx={size / 2}
+                cy={size / 2}
+                r={r}
+                fill="none"
+                stroke={COLORS.unavailable}
+                strokeWidth={sw}
+                strokeDasharray={`${unmArc} ${circ - unmArc}`}
+                strokeDashoffset={-unmOffset}
+                strokeLinecap="round"
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              />
+            )}
+            {/* Center text */}
+            <text
+              x={size / 2}
+              y={size / 2 - 4}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="#fff"
+              fontSize={24}
+              fontWeight={700}
             >
-              <span className="text-sm font-semibold text-foreground">{CATEGORY_LABELS[cat]}</span>
-              <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-            </button>
-            <AnimatePresence>
-              {isOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="px-4 pb-4 space-y-0">
-                    {catEntries.map((entry, idx) => {
-                      const dotColor = BM_STATUS_COLORS[entry.status] || BM_STATUS_COLORS.unavailable;
-                      const isUnavailable = entry.status === 'unavailable';
-                      return (
-                        <div
-                          key={entry.key + '-' + idx}
-                          className={`flex items-center justify-between py-2.5 ${idx < catEntries.length - 1 ? 'border-b border-border/20' : ''}`}
-                          style={{ opacity: isUnavailable ? 0.4 : 1 }}
-                        >
-                          <div className="flex items-center gap-2.5 flex-1 min-w-0">
-                            <div
-                              className="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: dotColor }}
-                            />
-                            <span className="text-xs font-medium text-foreground truncate">{entry.label}</span>
-                          </div>
-                          <div className="flex items-center gap-2.5 shrink-0">
-                            <span className="text-xs font-bold text-foreground">
-                              {entry.value !== null ? entry.value : '--'}
-                              {entry.unit && <span className="text-[10px] font-normal text-muted-foreground ml-0.5">{entry.unit}</span>}
-                            </span>
-                            <span
-                              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full"
-                              style={{
-                                backgroundColor: `${dotColor}18`,
-                                color: dotColor,
-                              }}
-                            >
-                              {statusLabel(entry.status)}
-                            </span>
-                            {entry.optimalRange && (
-                              <span className="text-[9px] text-muted-foreground/60 hidden sm:inline">
-                                ({entry.optimalRange})
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+              {measured}/{total}
+            </text>
+            <text
+              x={size / 2}
+              y={size / 2 + 18}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="#777"
+              fontSize={10}
+              fontWeight={500}
+              letterSpacing={1}
+            >
+              BIOMARKERS
+            </text>
+          </svg>
+        </div>
+
+        {/* Right: Status numbers */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLORS.optimal }} />
+            <span style={{ fontSize: 12, color: '#aaa' }}>{'\u2713'} Optimal</span>
+            <span style={{ fontSize: 14, fontWeight: 700, marginLeft: 'auto' }}>{optCount}</span>
           </div>
-        );
-      })}
-    </motion.div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/*  Main component                                                     */
-/* ------------------------------------------------------------------ */
-export default function Analysis() {
-  const [, navigate] = useLocation();
-  const [data, setData] = useState<BloodTestResults | null>(null);
-  const [hasData, setHasData] = useState<boolean | null>(null);
-  const [insights, setInsights] = useState<Insight[]>([]);
-  const [daysRecorded, setDaysRecorded] = useState(0);
-  const [showReUpload, setShowReUpload] = useState(false);
-  const [healthCheckData, setHealthCheckData] = useState<HealthCheckData | null>(null);
-
-  const loadData = useCallback(() => {
-    try {
-      const raw = localStorage.getItem(BLOOD_TEST_KEY);
-      if (!raw) { setHasData(false); return; }
-      const parsed: BloodTestResults = JSON.parse(raw);
-      if (!parsed.markers || parsed.markers.length === 0) { setHasData(false); return; }
-      setData(parsed);
-      setHasData(true);
-
-      const recentLogs  = getRecentDailyLogs(INSIGHT_DAYS);
-      const userProfile = JSON.parse(localStorage.getItem('userProfile') || '{}');
-      const { insights: calc, daysRecorded: days } = calcInsights(parsed.markers, recentLogs, userProfile);
-      setInsights(calc);
-      setDaysRecorded(days);
-    } catch {
-      setHasData(false);
-    }
-
-    // Load healthCheckData
-    try {
-      const hcRaw = localStorage.getItem(HEALTH_CHECK_KEY);
-      if (hcRaw) {
-        const hcParsed: HealthCheckData = JSON.parse(hcRaw);
-        setHealthCheckData(hcParsed);
-      }
-    } catch {}
-  }, []);
-
-  useEffect(() => { loadData(); }, [loadData]);
-
-  const handleUploadComplete = (newData: BloodTestResults) => {
-    setData(newData);
-    setHasData(true);
-    setShowReUpload(false);
-
-    const recentLogs  = getRecentDailyLogs(INSIGHT_DAYS);
-    const userProfile = JSON.parse(localStorage.getItem('userProfile') || '{}');
-    const { insights: calc, daysRecorded: days } = calcInsights(newData.markers, recentLogs, userProfile);
-    setInsights(calc);
-    setDaysRecorded(days);
-
-    // Reload healthCheckData
-    try {
-      const hcRaw = localStorage.getItem(HEALTH_CHECK_KEY);
-      if (hcRaw) setHealthCheckData(JSON.parse(hcRaw));
-    } catch {}
-  };
-
-  const okCount         = data?.markers.filter(m => m.status === "ok").length         ?? 0;
-  const borderlineCount = data?.markers.filter(m => m.status === "borderline").length ?? 0;
-  const lowCount        = data?.markers.filter(m => m.status === "low").length        ?? 0;
-
-  /* ---- Biomarker evaluation (from healthCheckData) ---- */
-  const bmEntries = healthCheckData ? evaluateBiomarkers(healthCheckData) : [];
-  const bmGrouped = healthCheckData ? groupByCategory(bmEntries) : null;
-  const bmScore = bmEntries.length > 0 ? getCategoryScore(bmEntries) : null;
-  const comparison = compareLatestTwo();
-  const highPriorityMissing = healthCheckData ? getHighPriorityTests(healthCheckData) : [];
-
-  /* Next test reminder: latest upload + 3 months */
-  const latestUploadDate = (() => {
-    const hcHistory = getHealthHistory();
-    if (hcHistory.length > 0) return new Date(hcHistory[0].uploadedAt);
-    if (data?.savedAt) return new Date(data.savedAt);
-    return null;
-  })();
-  const nextTestDate = latestUploadDate ? new Date(latestUploadDate.getTime() + 90 * 24 * 60 * 60 * 1000) : null;
-
-  /* Comparison improvement count for summary card */
-  const comparisonLabel = (() => {
-    if (!comparison) return '初回測定';
-    const changedKeys = Object.keys(comparison.changes);
-    if (changedKeys.length === 0) return '変化なし';
-    let improved = 0;
-    for (const key of changedKeys) {
-      const c = comparison.changes[key];
-      if (c.delta !== null && c.delta !== 0) {
-        improved++;
-      }
-    }
-    return `変化 ${improved}項目`;
-  })();
-
-  return (
-    <DashboardLayout>
-      <div className="max-w-5xl mx-auto">
-
-        {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="stat-label mb-1">Blood Analysis</p>
-              <h1 className="text-2xl lg:text-3xl font-bold">血液検査解析</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLORS.sufficient }} />
+            <span style={{ fontSize: 12, color: '#aaa' }}>{'\u25CF'} Sufficient</span>
+            <span style={{ fontSize: 14, fontWeight: 700, marginLeft: 'auto' }}>{sufCount}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: COLORS.outOfRange }} />
+            <span style={{ fontSize: 12, color: '#aaa' }}>! Out of Range</span>
+            <span style={{ fontSize: 14, fontWeight: 700, marginLeft: 'auto' }}>{oorCount}</span>
+          </div>
+          {lastUpdatedDate && (
+            <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>
+              最終更新：{lastUpdatedDate}
             </div>
-            {hasData === true && (
-              <Button
-                onClick={() => setShowReUpload(!showReUpload)}
-                variant="outline"
-                size="sm"
-                className="gap-1.5 border-border text-xs"
-              >
-                📤 再アップロード
-              </Button>
-            )}
-          </div>
-          <p className="text-sm text-muted-foreground mt-1.5">
-            AIによる血液検査データの解析レポートです。
-          </p>
-        </motion.div>
-
-        {/* Disclaimer */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.05 }} className="elevated-card rounded-xl p-3.5 mb-6 flex items-start gap-3">
-          <Info className="w-4 h-4 text-teal mt-0.5 shrink-0" />
-          <p className="text-[11px] text-muted-foreground leading-relaxed">
-            ※ 本アプリは医療機器ではありません。表示される情報は生活習慣改善の参考を目的としており、医学的診断・治療を提供するものではありません。数値に気になる点がある場合は、医療機関にご相談ください。
-          </p>
-        </motion.div>
-
-        {/* Re-upload modal */}
-        <AnimatePresence>
-          {showReUpload && (
-            <ReUploadModal
-              onComplete={handleUploadComplete}
-              onClose={() => setShowReUpload(false)}
-            />
           )}
-        </AnimatePresence>
+        </div>
+      </div>
 
-        {/* ── データなし → Upload Zone ── */}
-        {hasData === false && (
-          <UploadZone onComplete={handleUploadComplete} />
-        )}
+      {/* ---- Section 3: AI Insight Card ---- */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        style={{
+          background: '#111118',
+          border: '1px solid #222',
+          borderRadius: 16,
+          padding: 16,
+          marginBottom: 20,
+        }}
+      >
+        <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.6, marginBottom: 12 }}>
+          {insight}
+        </div>
+        <div
+          onClick={scrollToList}
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            color: '#a78bfa',
+            cursor: 'pointer',
+            letterSpacing: 0.5,
+          }}
+        >
+          EXPLORE YOUR LABS IN DETAIL <ArrowRight size={12} style={{ verticalAlign: 'middle', marginLeft: 4 }} />
+        </div>
+      </motion.div>
 
-        {/* ── データあり ── */}
-        {hasData === true && data && (
-          <>
-            {/* Summary counts */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="grid grid-cols-3 gap-3 mb-6">
-              {[
-                { label: "正常",   count: okCount,         colorClass: "text-teal" },
-                { label: "要確認", count: borderlineCount, colorClass: "text-amber" },
-                { label: "着目",   count: lowCount,        colorClass: "text-destructive" },
-              ].map(({ label, count, colorClass }) => (
-                <div key={label} className="elevated-card rounded-xl p-4 text-center">
-                  <p className={`text-2xl font-bold ${colorClass}`}>{count}</p>
-                  <p className="text-xs text-muted-foreground mt-1">{label}</p>
+      {/* ---- Section 4: Search Bar ---- */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          background: '#111118',
+          border: '1px solid #222',
+          borderRadius: 14,
+          padding: '10px 14px',
+          marginBottom: 12,
+        }}
+      >
+        <Search size={16} color="#555" />
+        <input
+          type="text"
+          placeholder="Search for Vitamin D, Cortisol, etc."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          style={{
+            flex: 1,
+            background: 'transparent',
+            border: 'none',
+            outline: 'none',
+            color: '#fff',
+            fontSize: 13,
+          }}
+        />
+      </div>
+
+      {/* ---- Section 5: Filter & Sort Bar ---- */}
+      <div style={{ position: 'relative', marginBottom: 16 }}>
+        <button
+          onClick={() => setShowSortDropdown(prev => !prev)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#777',
+            fontSize: 10,
+            fontWeight: 600,
+            textTransform: 'uppercase' as const,
+            letterSpacing: 2,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '4px 0',
+          }}
+        >
+          <SlidersHorizontal size={12} />
+          FILTER & SORT {showSortDropdown ? '\u2227' : '\u2228'}
+        </button>
+        <AnimatePresence>
+          {showSortDropdown && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'absolute',
+                top: 28,
+                left: 0,
+                background: '#181820',
+                border: '1px solid #2a2a34',
+                borderRadius: 12,
+                padding: 6,
+                zIndex: 100,
+                minWidth: 220,
+              }}
+            >
+              {([
+                { key: 'oor-first' as SortMode, label: 'Out of Range \u2192 Optimal' },
+                { key: 'optimal-first' as SortMode, label: 'Optimal \u2192 Out of Range' },
+                { key: 'alpha' as SortMode, label: 'アルファベット順' },
+                { key: 'delta' as SortMode, label: '前回からの変化が大きい順' },
+              ]).map(opt => (
+                <div
+                  key={opt.key}
+                  onClick={() => {
+                    setSortMode(opt.key);
+                    setShowSortDropdown(false);
+                  }}
+                  style={{
+                    padding: '8px 12px',
+                    fontSize: 12,
+                    color: sortMode === opt.key ? '#a78bfa' : '#aaa',
+                    fontWeight: sortMode === opt.key ? 600 : 400,
+                    cursor: 'pointer',
+                    borderRadius: 8,
+                    background: sortMode === opt.key ? 'rgba(167,139,250,0.08)' : 'transparent',
+                  }}
+                >
+                  {opt.label}
                 </div>
               ))}
             </motion.div>
-
-            {/* ============================================================ */}
-            {/*  NEW SECTION 1: Overview Summary Cards (biomarker evaluation) */}
-            {/* ============================================================ */}
-            {bmScore && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.07 }} className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                <div className="elevated-card rounded-xl p-4 text-center">
-                  <p className="text-2xl font-bold text-foreground">{bmScore.measured}<span className="text-sm font-normal text-muted-foreground">/{bmScore.total}</span></p>
-                  <p className="text-xs text-muted-foreground mt-1">測定項目数</p>
-                </div>
-                <div className="elevated-card rounded-xl p-4 text-center">
-                  <p className="text-2xl font-bold" style={{ color: '#1D9E75' }}>{bmScore.optimal}</p>
-                  <p className="text-xs text-muted-foreground mt-1">至適域</p>
-                </div>
-                <div className="elevated-card rounded-xl p-4 text-center">
-                  <p className="text-2xl font-bold" style={{ color: '#E24B4A' }}>{bmScore.outOfRange}</p>
-                  <p className="text-xs text-muted-foreground mt-1">要注意</p>
-                </div>
-                <div className="elevated-card rounded-xl p-4 text-center">
-                  <p className="text-2xl font-bold text-foreground">{comparisonLabel.includes('項目') ? comparisonLabel.replace(/変化\s*/, '').replace('項目', '') : '--'}</p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {comparison ? `前回比` : '初回測定'}
-                  </p>
-                  {comparison && (
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{comparisonLabel}</p>
-                  )}
-                </div>
-              </motion.div>
-            )}
-
-            {/* ============================================================ */}
-            {/*  NEW SECTION 2: 7 Category Summary Grid                      */}
-            {/* ============================================================ */}
-            {bmGrouped && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.09 }} className="mb-6">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">カテゴリ別サマリー</p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {(Object.keys(CATEGORY_LABELS) as HealthCategory[]).map(cat => {
-                    const catEntries = bmGrouped[cat];
-                    if (!catEntries || catEntries.length === 0) return null;
-                    const score = getCategoryScore(catEntries);
-                    const measured = score.measured || 1;
-                    const optPct = Math.round((score.optimal / measured) * 100);
-                    const sufPct = Math.round((score.sufficient / measured) * 100);
-                    const oorPct = Math.round((score.outOfRange / measured) * 100);
-                    const hasOutOfRange = score.outOfRange > 0;
-                    const allOptimal = score.optimal === score.measured && score.measured > 0;
-                    const badge = allOptimal ? '✅' : hasOutOfRange ? '⚠️' : '✅';
-
-                    return (
-                      <div
-                        key={cat}
-                        className="elevated-card rounded-xl p-4"
-                        style={hasOutOfRange ? { border: '1px solid rgba(226,75,74,0.3)' } : {}}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-semibold text-foreground">{CATEGORY_LABELS[cat]}</p>
-                          <span className="text-sm">{badge}</span>
-                        </div>
-                        {/* Mini progress bar */}
-                        <div className="w-full h-2 rounded-full overflow-hidden flex bg-secondary/60">
-                          {optPct > 0 && (
-                            <div style={{ width: `${optPct}%`, backgroundColor: '#1D9E75' }} className="h-full" />
-                          )}
-                          {sufPct > 0 && (
-                            <div style={{ width: `${sufPct}%`, backgroundColor: '#185FA5' }} className="h-full" />
-                          )}
-                          {oorPct > 0 && (
-                            <div style={{ width: `${oorPct}%`, backgroundColor: '#E24B4A' }} className="h-full" />
-                          )}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground mt-1.5">
-                          {score.optimal}/{score.measured} 至適
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            )}
-
-            {/* ============================================================ */}
-            {/*  NEW SECTION 3: Category Detail Lists (accordion)             */}
-            {/* ============================================================ */}
-            {bmGrouped && bmEntries.length > 0 && (
-              <CategoryDetailSection entries={bmEntries} grouped={bmGrouped} />
-            )}
-
-            {/* ============================================================ */}
-            {/*  NEW SECTION 4: Previous Comparison                           */}
-            {/* ============================================================ */}
-            {comparison && Object.keys(comparison.changes).length > 0 && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }} className="elevated-card rounded-xl p-5 mb-6">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">前回との比較</p>
-                <div className="space-y-0">
-                  {Object.entries(comparison.changes).map(([key, change], idx) => {
-                    const entry = bmEntries.find(e => e.key === key);
-                    const label = entry?.label || key;
-                    const delta = change.delta ?? 0;
-                    const isImproved = delta < 0;
-                    const isWorsened = delta > 0;
-                    const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '';
-                    const changeColor = isImproved ? '#1D9E75' : isWorsened ? '#E24B4A' : 'inherit';
-
-                    return (
-                      <div
-                        key={key}
-                        className={`flex items-center justify-between py-2.5 ${idx < Object.keys(comparison.changes).length - 1 ? 'border-b border-border/20' : ''}`}
-                      >
-                        <span className="text-xs font-medium text-foreground">{label}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[11px] text-muted-foreground">
-                            {change.previous} → {change.current}
-                          </span>
-                          <span className="text-xs font-bold" style={{ color: changeColor }}>
-                            {arrow} {Math.abs(delta)}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            )}
-
-            {/* ============================================================ */}
-            {/*  NEW SECTION 5: Test Completeness                             */}
-            {/* ============================================================ */}
-            {healthCheckData && bmScore && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="elevated-card rounded-xl p-5 mb-6">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">検査の充足度</p>
-                {(() => {
-                  const totalForProgress = bmScore.measured + highPriorityMissing.length;
-                  const completionPct = totalForProgress > 0 ? Math.round((bmScore.measured / totalForProgress) * 100) : 0;
-                  return (
-                    <>
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="flex-1 h-3 rounded-full bg-secondary/60 overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{ width: `${completionPct}%`, backgroundColor: '#1D9E75' }}
-                          />
-                        </div>
-                        <span className="text-sm font-bold text-foreground shrink-0">{completionPct}%</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mb-3">
-                        {bmScore.measured} / {totalForProgress} 項目を測定済み
-                      </p>
-                    </>
-                  );
-                })()}
-                {highPriorityMissing.length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-semibold text-foreground">追加測定を検討</p>
-                    {highPriorityMissing.slice(0, 5).map(test => (
-                      <div key={test.key} className="flex items-start gap-2 py-1.5">
-                        <div className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: '#E24B4A' }} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-foreground">{test.name}</p>
-                          <p className="text-[10px] text-muted-foreground leading-relaxed">{test.reason}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
-            )}
-
-            {/* Overall assessment */}
-            {data.overall_assessment && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="elevated-card rounded-xl p-4 mb-5 border border-teal/20 bg-teal/5">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-2">総合評価</p>
-                <p className="text-sm text-foreground leading-relaxed">{data.overall_assessment}</p>
-              </motion.div>
-            )}
-
-            {/* Biomarkers list */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="elevated-card rounded-xl p-5 mb-5">
-              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-4">バイオマーカー</p>
-              <div className="space-y-0">
-                {data.markers.map((m, i) => {
-                  const sc = STATUS_CONFIG[m.status] ?? STATUS_CONFIG.ok;
-                  return (
-                    <motion.div
-                      key={i}
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.12 + i * 0.03 }}
-                      className={`flex items-center justify-between py-3 ${i < data.markers.length - 1 ? "border-b border-border/30" : ""}`}
-                    >
-                      <div className="flex-1 min-w-0 pr-3">
-                        <p className="text-sm font-semibold text-foreground">{m.name}</p>
-                        {m.note && <p className="text-[11px] text-muted-foreground mt-0.5">{m.note}</p>}
-                        {m.reference_range && <p className="text-[10px] text-muted-foreground/60 mt-0.5">基準値: {m.reference_range}</p>}
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-bold text-foreground">
-                          {m.value}
-                          {m.unit && <span className="text-[10px] font-normal text-muted-foreground ml-1">{m.unit}</span>}
-                        </p>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1 inline-block ${sc.bg} ${sc.color}`}>
-                          {sc.label}
-                        </span>
-                      </div>
-                    </motion.div>
-                  );
-                })}
-              </div>
-            </motion.div>
-
-            {/* Dietary advice */}
-            {data.dietary_advice && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="elevated-card rounded-xl p-5 mb-6">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">食事アドバイス</p>
-                <p className="text-sm text-foreground leading-relaxed">{data.dietary_advice}</p>
-              </motion.div>
-            )}
-
-            {/* Food × Blood Insights */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }} className="mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <TrendingUp className="w-4 h-4 text-teal" />
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">食事 × 血液の相関インサイト</p>
-              </div>
-
-              {daysRecorded === 0 ? (
-                <div className="elevated-card rounded-xl p-5 text-center">
-                  <p className="text-2xl mb-2">📊</p>
-                  <p className="text-sm font-semibold text-foreground mb-1">食事記録を開始しましょう</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    食事をスキャンして記録することで、血液検査との相関インサイトが生成されます。
-                    あと<span className="font-bold text-foreground">{INSIGHT_DAYS}日</span>分の記録が必要です。
-                  </p>
-                </div>
-              ) : daysRecorded < INSIGHT_DAYS && insights.length === 0 ? (
-                <div className="elevated-card rounded-xl p-5 text-center">
-                  <p className="text-2xl mb-2">📈</p>
-                  <p className="text-sm font-semibold text-foreground mb-1">記録を続けるとインサイトが生成されます</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    現在<span className="font-bold text-foreground">{daysRecorded}日</span>分の記録があります。
-                    あと<span className="font-bold text-foreground">{INSIGHT_DAYS - daysRecorded}日</span>記録を続けることで、より精度の高いインサイトが得られます。
-                  </p>
-                </div>
-              ) : insights.length === 0 ? (
-                <div className="elevated-card rounded-xl p-5 text-center">
-                  <p className="text-2xl mb-2">✅</p>
-                  <p className="text-sm font-semibold text-foreground mb-1">食事と血液検査の相関は良好です</p>
-                  <p className="text-xs text-muted-foreground">過去{daysRecorded}日の食事記録と血液検査を照合した結果、特に改善が必要な相関は見つかりませんでした。</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {insights.map((insight, i) => {
-                    const borderColor = insight.color === 'red' ? 'border-destructive/20' : insight.color === 'amber' ? 'border-amber/20' : 'border-teal/20';
-                    const iconBg = insight.color === 'red' ? 'bg-destructive/10' : insight.color === 'amber' ? 'bg-amber/10' : 'bg-teal/10';
-                    return (
-                      <motion.div
-                        key={i}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.37 + i * 0.05 }}
-                        className={`elevated-card rounded-xl p-4 border ${borderColor}`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className={`text-xl w-9 h-9 flex items-center justify-center rounded-lg shrink-0 ${iconBg}`}>{insight.icon}</span>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground mb-1">{insight.title}</p>
-                            <p className="text-xs text-muted-foreground leading-relaxed mb-2">{insight.message}</p>
-                            <div className="flex flex-wrap gap-1.5">
-                              {insight.actions.map((action, j) => (
-                                <span key={j} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${iconBg} ${insight.color === 'red' ? 'text-destructive' : insight.color === 'amber' ? 'text-amber' : 'text-teal'}`}>
-                                  {action}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                  {daysRecorded < INSIGHT_DAYS && (
-                    <p className="text-[10px] text-muted-foreground text-center pt-1">
-                      ※ あと<span className="font-bold">{INSIGHT_DAYS - daysRecorded}日</span>分の食事記録でさらに精度が上がります
-                    </p>
-                  )}
-                </div>
-              )}
-            </motion.div>
-
-            {/* History section */}
-            <HistorySection />
-
-            {/* ============================================================ */}
-            {/*  NEW SECTION 6: Next Test Reminder                            */}
-            {/* ============================================================ */}
-            {nextTestDate && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.48 }} className="elevated-card rounded-xl p-5 mb-6 border border-primary/20">
-                <div className="flex items-center gap-3 mb-3">
-                  <span className="text-2xl">🗓️</span>
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      次回推奨検査時期：{nextTestDate.getFullYear()}年{nextTestDate.getMonth() + 1}月頃
-                    </p>
-                    <p className="text-[11px] text-muted-foreground">定期的な検査で変化を追跡しましょう</p>
-                  </div>
-                </div>
-                <Button
-                  onClick={() => setShowReUpload(true)}
-                  variant="outline"
-                  size="sm"
-                  className="w-full gap-1.5 border-primary/30 text-primary hover:bg-primary/5 text-xs"
-                >
-                  📤 検査結果をアップロード
-                </Button>
-              </motion.div>
-            )}
-
-            {/* CTA */}
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-center">
-              <Button onClick={() => navigate('/supplements')} size="lg" className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 text-sm font-semibold px-10 h-11">
-                サプリ処方を見る
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </motion.div>
-          </>
-        )}
+          )}
+        </AnimatePresence>
       </div>
-    </DashboardLayout>
+
+      {/* ---- Section 6: Biomarker List ---- */}
+      <div id="biomarker-list">
+        {groupedEntries.map(group => (
+          <div key={group.status} style={{ marginBottom: 20 }}>
+            {/* Group header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: group.color }}>
+                {group.label}
+              </span>
+              <span style={{ fontSize: 11, color: '#666' }}>
+                {group.entries.length} Biomarker{group.entries.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            {/* Biomarker cards */}
+            {group.entries.map(entry => {
+              const isUnavailable = entry.status === 'unavailable';
+              const cfg = STATUS_CONFIG[entry.status] ?? STATUS_CONFIG.unavailable;
+
+              return (
+                <motion.div
+                  key={entry.key}
+                  initial={{ opacity: 0, y: 6 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  onClick={() => !isUnavailable && setSelectedBiomarker(entry)}
+                  style={{
+                    background: '#111118',
+                    border: '1px solid #1e1e28',
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    marginBottom: 8,
+                    cursor: isUnavailable ? 'default' : 'pointer',
+                    opacity: isUnavailable ? 0.5 : 1,
+                  }}
+                >
+                  {/* Top row: label + chevron */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700 }}>{entry.label}</span>
+                    {!isUnavailable && <ChevronRight size={16} color="#555" />}
+                  </div>
+
+                  {/* Value row */}
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 10 }}>
+                    <span style={{ fontSize: 24, fontWeight: 700 }}>
+                      {entry.value !== null && entry.value !== undefined ? entry.value : '\u2014'}
+                    </span>
+                    {entry.value !== null && entry.value !== undefined && (
+                      <span style={{ fontSize: 12, color: '#777' }}>{entry.unit}</span>
+                    )}
+                  </div>
+
+                  {/* Bottom row: status badge + range bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 600,
+                        color: cfg.color,
+                        background: cfg.bg,
+                        padding: '3px 8px',
+                        borderRadius: 6,
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {cfg.label}
+                    </span>
+                    {!isUnavailable && entry.value !== null && entry.value !== undefined && (
+                      <RangeBar bioKey={entry.key} value={entry.value} compact />
+                    )}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* ---- Section 7: Contributing Tests ---- */}
+      <div style={{ marginTop: 32, marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              textTransform: 'uppercase' as const,
+              letterSpacing: 2,
+              color: '#777',
+            }}
+          >
+            CONTRIBUTING TESTS
+          </span>
+          <span
+            onClick={() => navigate('/history')}
+            style={{ fontSize: 11, fontWeight: 600, color: '#a78bfa', cursor: 'pointer' }}
+          >
+            HISTORY <ArrowRight size={11} style={{ verticalAlign: 'middle', marginLeft: 2 }} />
+          </span>
+        </div>
+
+        {history.map(h => {
+          const d = new Date(h.uploadedAt);
+          const dateStr = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+          const numKeys = Object.keys(h.data).filter(
+            k => !['checkupDate', 'gender', 'abnormalFlags', 'doctorComment', 'overallRating'].includes(k)
+              && (h.data as any)[k] !== null
+          ).length;
+
+          return (
+            <div
+              key={h.id}
+              onClick={() => navigate('/history')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                background: '#111118',
+                border: '1px solid #1e1e28',
+                borderRadius: 12,
+                padding: '12px 14px',
+                marginBottom: 6,
+                cursor: 'pointer',
+              }}
+            >
+              <FileText size={18} color="#555" />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>
+                  Medical checkup ({numKeys}項目)
+                </div>
+                <div style={{ fontSize: 11, color: '#666' }}>{dateStr}</div>
+              </div>
+              <ChevronRight size={16} color="#555" />
+            </div>
+          );
+        })}
+
+        {/* Upload banner */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            background: '#111118',
+            border: '1px solid #1e1e28',
+            borderRadius: 12,
+            padding: '14px 14px',
+            marginTop: 12,
+            cursor: 'pointer',
+          }}
+          onClick={() => navigate('/upload')}
+        >
+          <Upload size={18} color="#a78bfa" />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Have other tests?</div>
+            <div style={{ fontSize: 11, color: '#666' }}>他の検査結果をアップロード</div>
+          </div>
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: '#a78bfa',
+              background: 'rgba(167,139,250,0.1)',
+              padding: '4px 10px',
+              borderRadius: 8,
+              letterSpacing: 1,
+            }}
+          >
+            UPLOAD
+          </span>
+        </div>
+      </div>
+
+      {/* ---- BiomarkerDetail modal ---- */}
+      <AnimatePresence>
+        {selectedBiomarker && (
+          <BiomarkerDetail
+            entry={selectedBiomarker}
+            previousValue={getPreviousValue(selectedBiomarker.key)}
+            onClose={() => setSelectedBiomarker(null)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
