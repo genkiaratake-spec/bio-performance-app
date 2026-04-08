@@ -8,13 +8,6 @@ import { getScoreBand } from "../utils/foodScoring";
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
-const MEAL_ICON: Record<string, string> = {
-  breakfast: "🌅",
-  lunch: "☀️",
-  dinner: "🌙",
-  snack: "🍎",
-};
-
 const MEAL_LABEL: Record<string, string> = {
   breakfast: "朝食",
   lunch: "昼食",
@@ -73,7 +66,6 @@ function MealCard({ entry }: { entry: MealLogEntry }) {
     >
       {/* Top row: icon + name + time + score */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <span style={{ fontSize: 20 }}>{MEAL_ICON[entry.mealType] || "🍽️"}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ fontSize: 13, fontWeight: 700, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {entry.mealName}
