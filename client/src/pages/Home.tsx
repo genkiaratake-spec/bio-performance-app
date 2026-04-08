@@ -214,8 +214,8 @@ export default function Home() {
       clearTimeout(tid);
 
       const data = await res.json();
-      if (data.success && data.result) {
-        setPhotoResult(data.result);
+      if (data.success && data.data) {
+        setPhotoResult(data.data);
       } else {
         setPhotoError(data.error || "解析に失敗しました。もう一度お試しください。");
       }
