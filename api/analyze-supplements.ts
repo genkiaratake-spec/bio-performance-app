@@ -59,7 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (has(meds, 'statin')) drugAlerts.push('スタチン服用中：CoQ10が最大40%低下（メバロン酸経路阻害）。CoQ10 100–300mg/日の補充を強く推奨。');
     if (has(meds, 'metformin')) drugAlerts.push('メトホルミン服用中：使用者の22–29%がB12欠乏（ADA 2025）。高用量・長期使用者は年1回B12検査推奨。');
     if (has(meds, 'ppi')) drugAlerts.push('PPI服用中：B12・鉄・マグネシウム・亜鉛・VitCの吸収を長期的に阻害。定期的なモニタリングを推奨。');
-    if (has(life, 'pregnant')) drugAlerts.push('妊娠中：アシュワガンダ・ベルベリンは禁忌。高用量VitDも医師に相談。');
+    if (has(life, 'pregnant')) drugAlerts.push('妊娠中：アシュワガンダは禁忌。高用量VitDも医師に相談。');
 
     // ── Vitamin D3 + K2 (Grade A) ──
     const vitD = v(healthData.vitaminD);
@@ -255,37 +255,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           reason: '慢性疲労症状。Tsai 2022（13 RCT, Hedges\' g=-0.398）。',
           trigger: 'symptoms: fatigue', retestTiming: '8週後に症状再評価', warning: '',
         });
-      }
-    }
-
-    // ── Berberine (Grade B) ──
-    {
-      const hba1c = v(healthData.hba1c);
-      const fbg = v(healthData.bloodSugar);
-      const ldl = v(healthData.ldlCholesterol);
-      const hsCrp = v(healthData.hsCrp);
-      const crp = v(healthData.crp);
-      const homaIr = v(healthData.homaIr);
-
-      const triggers: string[] = [];
-      if (hba1c !== null && hba1c >= 5.5) triggers.push(`HbA1c: ${hba1c}`);
-      if (fbg !== null && fbg >= 100) triggers.push(`血糖: ${fbg}`);
-      if (ldl !== null && ldl >= 130) triggers.push(`LDL: ${ldl}`);
-      if (hsCrp !== null && hsCrp >= 1.0) triggers.push(`hs-CRP: ${hsCrp}`);
-      else if (crp !== null && crp >= 0.1) triggers.push(`CRP: ${crp}`);
-      if (homaIr !== null && homaIr >= 2.5) triggers.push(`HOMA-IR: ${homaIr}`);
-
-      if (triggers.length > 0) {
-        let warning = '消化器症状→食直前投与で軽減。降糖薬との相互作用注意。妊娠中禁忌。';
-        if (has(meds, 'warfarin')) warning += ' ワーファリンとの相互作用あり。医師に相談。';
-        recommendations.push({
-          name: 'ベルベリン', dose: '500mg × 2–3回/日（食直前15分）',
-          grade: 'B', priority: 'medium',
-          reason: `代謝指標に改善余地あり。Zamani 2024（49 RCT）：HbA1c -0.4%、LDL -18.5 mg/dL。`,
-          trigger: triggers.join(', '), retestTiming: '12週後にHbA1c・脂質プロファイル再測定', warning,
-        });
-      } else if (hba1c !== null || ldl !== null) {
-        notNeeded.push({ name: 'ベルベリン', reason: '代謝指標が正常域。ベルベリンは異常がある場合に有効。正常値への投与は不要。' });
       }
     }
 
