@@ -403,6 +403,63 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // ── Synbiotics (Grade B) ──
+    {
+      const hsCrpVal = v(healthData.hsCrp);
+      const triggers: string[] = [];
+      const reasons: string[] = [];
+      let needSyn = false;
+
+      if (hsCrpVal !== null && hsCrpVal >= 1.0) {
+        needSyn = true;
+        triggers.push(`hs-CRP: ${hsCrpVal}`);
+        reasons.push(`hs-CRP ${hsCrpVal} mg/L — 慢性炎症あり。腸内フローラの乱れが全身炎症に関与することが複数のRCTで確認されている。プロバイオティクス補充でCRPの有意な低下（メタ分析：WMD -0.31 mg/L）が報告されている。`);
+      }
+      if (has(symp, 'fatigue')) {
+        needSyn = true;
+        triggers.push('symptoms: fatigue');
+        if (reasons.length === 0) reasons.push('慢性疲労症状あり。腸脳相関（gut-brain axis）を通じて腸内フローラがエネルギー代謝・気分に影響。プロバイオティクスによる疲労改善はLaborenz 2021（RCT）で確認。');
+      }
+      if (has(life, 'stress')) {
+        needSyn = true;
+        triggers.push('lifestyle: stress');
+        if (reasons.length === 0) reasons.push('高ストレス状態は腸内フローラの多様性を低下させる。Lactobacillus属・Bifidobacterium属の補充でストレス応答（HPA軸）の正常化を支持するエビデンスあり。');
+      }
+      if (has(life, 'over40')) {
+        needSyn = true;
+        triggers.push('lifestyle: over40');
+        if (reasons.length === 0) reasons.push('40歳以降はBifidobacterium属が減少傾向。加齢に伴う免疫低下・消化機能低下の予防にシンバイオティクス補充が有効。');
+      }
+      if (has(life, 'vegan')) {
+        needSyn = true;
+        triggers.push('lifestyle: vegan');
+        if (reasons.length === 0) reasons.push('菜食主義者は腸内フローラの構成が異なり、特定の菌種が不足しやすい。植物性食品由来の食物繊維（プレバイオティクス）は豊富だが、特定の有益菌の補充が有効な場合がある。');
+      }
+      if (has(life, 'sleepbad')) {
+        needSyn = true;
+        triggers.push('lifestyle: sleepbad');
+        if (reasons.length === 0) reasons.push('睡眠不足は腸内フローラの多様性を低下させることが確認されている。腸脳相関を通じた睡眠改善のエビデンスも蓄積されている。');
+      }
+
+      if (needSyn) {
+        const priority = (hsCrpVal !== null && hsCrpVal >= 1.0) ? 'medium' : 'low';
+        recommendations.push({
+          name: 'シンバイオティクス（プロバイオティクス＋プレバイオティクス）',
+          dose: '1カプセル/日（食後）、100億CFU以上の多菌種製品を選択',
+          grade: 'B', priority: priority as 'medium' | 'low',
+          reason: reasons[0],
+          trigger: triggers.join(', '),
+          retestTiming: '8週後にhs-CRP・主観的症状を評価',
+          warning: '抗生物質服用中は服用を一時中断し、終了後48時間空けて再開してください。免疫抑制剤服用中・重篤な免疫疾患の方は医師に相談してください。',
+        });
+      } else if (hsCrpVal !== null && hsCrpVal < 1.0) {
+        notNeeded.push({
+          name: 'シンバイオティクス',
+          reason: 'hs-CRPが正常域。腸内フローラ由来の炎症の懸念なし。プロバイオティクスは症状・リスク因子がある場合に特に有効。',
+        });
+      }
+    }
+
     // Sort: high > medium > low > caution
     const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2, caution: 3 };
     recommendations.sort((a, b) => (priorityOrder[a.priority] ?? 9) - (priorityOrder[b.priority] ?? 9));
