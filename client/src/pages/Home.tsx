@@ -12,6 +12,7 @@ import {
 } from "../utils/mealLog";
 import BarcodeScanner from "../components/BarcodeScanner";
 import ManualFoodEntry, { MealEntry } from "../components/ManualFoodEntry";
+import { getScoreColor, getScoreLabel } from "../utils/scoreColor";
 
 // ── constants ─────────────────────────────────────────────────────────────────
 const dateStr = new Date().toLocaleDateString("ja-JP", {
@@ -617,13 +618,18 @@ export default function Home() {
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }}>
           <Card>
             <SLabel>本日の食事スコア</SLabel>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginBottom: 12 }}>
-              <span style={{ fontSize: hasLogs && todayScore > 0 ? 52 : 32, fontWeight: 800, color: "#4ade80", lineHeight: 1 }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: hasLogs && todayScore > 0 ? 52 : 32, fontWeight: 800, color: hasLogs && todayScore > 0 ? getScoreColor(todayScore) : "#4ade80", lineHeight: 1 }}>
                 {hasLogs && todayScore > 0 ? todayScore : hasLogs ? "集計中..." : "---"}
               </span>
               <span style={{ fontSize: 16, color: "#555", marginBottom: 6 }}>/ 100</span>
             </div>
-            <ProgressBar value={todayScore} max={100} color="#4ade80" height={8} />
+            {hasLogs && todayScore > 0 && (
+              <span style={{ display: "inline-block", fontSize: 11, fontWeight: 700, color: getScoreColor(todayScore), background: `${getScoreColor(todayScore)}18`, borderRadius: 999, padding: "2px 10px", marginBottom: 8 }}>
+                {getScoreLabel(todayScore)}
+              </span>
+            )}
+            <ProgressBar value={todayScore} max={100} color={hasLogs && todayScore > 0 ? getScoreColor(todayScore) : "#4ade80"} height={8} />
             <p style={{ fontSize: 11, color: "#555", marginTop: 8 }}>
               {!hasLogs ? "食事を記録するとスコアが表示されます" : "記録した食事のスコア平均"}
             </p>
@@ -764,7 +770,7 @@ export default function Home() {
                             </span>
                           ))}
                           {log.healthScore > 0 && (
-                            <span style={{ fontSize: 10, color: "#4ade80", fontWeight: 600, marginLeft: "auto" }}>スコア {log.healthScore}</span>
+                            <span style={{ fontSize: 10, color: getScoreColor(log.healthScore), fontWeight: 600, marginLeft: "auto" }}>スコア {log.healthScore}</span>
                           )}
                         </div>
                       </div>

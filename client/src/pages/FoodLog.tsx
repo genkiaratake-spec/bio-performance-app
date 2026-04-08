@@ -3,7 +3,7 @@ import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { useState, useEffect } from "react";
 import { getTodayMealLog, MealLogEntry } from "../utils/mealLog";
-import { getScoreBand } from "../utils/foodScoring";
+import { getScoreColor, getScoreLabel } from "../utils/scoreColor";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -21,10 +21,8 @@ function formatTime(iso: string): string {
 }
 
 function scoreBandStyle(score: number) {
-  const band = getScoreBand(score);
-  if (band.color === "green") return { color: "#22c55e", bg: "#22c55e18", border: "#22c55e40" };
-  if (band.color === "yellow") return { color: "#eab308", bg: "#eab30818", border: "#eab30840" };
-  return { color: "#ef4444", bg: "#ef444418", border: "#ef444440" };
+  const c = getScoreColor(score);
+  return { color: c, bg: `${c}18`, border: `${c}40` };
 }
 
 /* ------------------------------------------------------------------ */
@@ -56,7 +54,7 @@ function ScoreRingSmall({ score }: { score: number }) {
 /* ------------------------------------------------------------------ */
 function MealCard({ entry }: { entry: MealLogEntry }) {
   const band = scoreBandStyle(entry.healthScore);
-  const scoreBand = getScoreBand(entry.healthScore);
+  const scoreLabel = getScoreLabel(entry.healthScore);
 
   return (
     <motion.div
@@ -81,7 +79,7 @@ function MealCard({ entry }: { entry: MealLogEntry }) {
             borderRadius: 999, padding: "3px 10px",
           }}>
             <span style={{ fontSize: 14, fontWeight: 800, color: band.color }}>{entry.healthScore}</span>
-            <span style={{ fontSize: 10, fontWeight: 600, color: band.color }}>{scoreBand.label}</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: band.color }}>{scoreLabel}</span>
           </div>
         </div>
       </div>
@@ -130,7 +128,7 @@ export default function FoodLog() {
     ? Math.round(todayMeals.reduce((s, m) => s + m.healthScore, 0) / todayMeals.length)
     : 0;
   const totalBand = scoreBandStyle(avgScore);
-  const totalLabel = getScoreBand(avgScore);
+  const totalLabelText = getScoreLabel(avgScore);
 
   return (
     <DashboardLayout>
@@ -189,7 +187,7 @@ export default function FoodLog() {
                     background: totalBand.bg, border: `1px solid ${totalBand.border}`,
                     color: totalBand.color, borderRadius: 999, padding: "2px 10px",
                   }}>
-                    {totalLabel.label}
+                    {totalLabelText}
                   </span>
                   <p style={{ fontSize: 11, color: "#666", marginTop: 6 }}>
                     {todayMeals.length}食記録済み
