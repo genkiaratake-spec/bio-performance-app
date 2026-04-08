@@ -122,6 +122,7 @@ export default function Home() {
   // barcode
   const [scanLoading,    setScanLoading]    = useState(false);
   const [barcodeResult,  setBarcodeResult]  = useState<BarcodeResultState | null>(null);
+  const [barcodeGrams,   setBarcodeGrams]   = useState<number>(100);
 
   // toast
   const [toast, setToast] = useState<string | null>(null);
@@ -291,15 +292,20 @@ export default function Home() {
   const handleSaveBarcodeToLog = () => {
     if (!barcodeResult?.product) return;
     const p = barcodeResult.product;
+    const ratio = barcodeGrams / 100;
     addMealLog({
       mealType: guessMealType(), mealName: p.name,
-      totalCalories: p.calories, totalProtein: p.protein,
-      totalFat: p.fat, totalCarbs: p.carbs,
+      totalCalories: Math.round(p.calories * ratio),
+      totalProtein: Math.round(p.protein * ratio * 10) / 10,
+      totalFat: Math.round(p.fat * ratio * 10) / 10,
+      totalCarbs: Math.round(p.carbs * ratio * 10) / 10,
       healthScore: 0, source: "barcode",
       barcode: barcodeResult.barcode,
-      fiber: p.fiber, sodium: p.sodium,
+      fiber: p.fiber != null ? Math.round(p.fiber * ratio * 10) / 10 : undefined,
+      sodium: p.sodium != null ? Math.round(p.sodium * ratio * 10) / 10 : undefined,
     });
     setBarcodeResult(null);
+    setBarcodeGrams(100);
     showToast("✓ 食事ログに追加しました");
     refresh();
   };
@@ -479,7 +485,7 @@ export default function Home() {
           <motion.div
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             style={{ position: "fixed", inset: 0, zIndex: 9998, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "flex-end", justifyContent: "center" }}
-            onClick={() => setBarcodeResult(null)}
+            onClick={() => { setBarcodeResult(null); setBarcodeGrams(100); }}
           >
             <motion.div
               initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
@@ -495,9 +501,9 @@ export default function Home() {
                   <p style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 8 }}>商品が見つかりませんでした</p>
                   <p style={{ fontSize: 13, color: "#777", marginBottom: 24 }}>バーコード: {barcodeResult.barcode}</p>
                   <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={() => setBarcodeResult(null)} style={secBtn}>閉じる</button>
-                    <button onClick={() => { setBarcodeResult(null); setShowScanner(true); }} style={outBtn}>再スキャン</button>
-                    <button onClick={() => { setBarcodeResult(null); setShowManualEntry(true); }} style={outBtn}>手入力</button>
+                    <button onClick={() => { setBarcodeResult(null); setBarcodeGrams(100); }} style={secBtn}>閉じる</button>
+                    <button onClick={() => { setBarcodeResult(null); setBarcodeGrams(100); setShowScanner(true); }} style={outBtn}>再スキャン</button>
+                    <button onClick={() => { setBarcodeResult(null); setBarcodeGrams(100); setShowManualEntry(true); }} style={outBtn}>手入力</button>
                   </div>
                 </div>
               ) : (
@@ -512,15 +518,46 @@ export default function Home() {
                   <p style={{ fontSize: 18, fontWeight: 800, color: "#fff", marginBottom: 4 }}>{barcodeResult.product?.name}</p>
                   {barcodeResult.product?.brand && <p style={{ fontSize: 12, color: "#666", marginBottom: 14 }}>{barcodeResult.product.brand}</p>}
 
+                  {/* グラム数調整 */}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <span style={{ color: "#aaa", fontSize: 13 }}>摂取量</span>
+                      <span style={{ color: "#4ade80", fontSize: 16, fontWeight: 700 }}>{barcodeGrams}g</span>
+                    </div>
+                    <input
+                      type="range" min={10} max={500} step={5}
+                      value={barcodeGrams}
+                      onChange={e => setBarcodeGrams(Number(e.target.value))}
+                      style={{ width: "100%", accentColor: "#4ade80" }}
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#666", marginTop: 4 }}>
+                      <span>10g</span>
+                      <span>500g</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+                      {[50, 100, 150, 200, 300].map(g => (
+                        <button key={g} onClick={() => setBarcodeGrams(g)}
+                          style={{
+                            padding: "4px 10px", borderRadius: 20, fontSize: 12,
+                            background: barcodeGrams === g ? "#4ade80" : "#2a2a2a",
+                            color: barcodeGrams === g ? "#000" : "#aaa",
+                            border: "1px solid #444", cursor: "pointer",
+                          }}
+                        >{g}g</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 計算済み栄養成分 */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, background: "#0e0e15", borderRadius: 12, padding: 14, marginBottom: 14, border: "1px solid #1e1e28" }}>
-                    <p style={{ fontSize: 10, color: "#555", letterSpacing: "0.1em", fontWeight: 600, textTransform: "uppercase", gridColumn: "1/-1", marginBottom: 6 }}>100g 当たりの栄養成分</p>
+                    <p style={{ fontSize: 10, color: "#555", letterSpacing: "0.1em", fontWeight: 600, textTransform: "uppercase", gridColumn: "1/-1", marginBottom: 6 }}>{barcodeGrams}g あたりの栄養成分</p>
                     {[
-                      { label: "カロリー",   value: `${barcodeResult.product?.calories ?? 0} kcal`, color: "#fff" },
-                      { label: "タンパク質", value: `${barcodeResult.product?.protein ?? 0}g`,       color: "#4ade80" },
-                      { label: "脂質",       value: `${barcodeResult.product?.fat ?? 0}g`,           color: "#fbbf24" },
-                      { label: "炭水化物",   value: `${barcodeResult.product?.carbs ?? 0}g`,         color: "#60a5fa" },
-                      ...(barcodeResult.product?.fiber  != null ? [{ label: "食物繊維", value: `${barcodeResult.product.fiber}g`, color: "#a78bfa" }] : []),
-                      ...(barcodeResult.product?.sodium != null ? [{ label: "食塩",    value: `${barcodeResult.product.sodium}mg`, color: "#f87171" }] : []),
+                      { label: "カロリー",   value: `${Math.round((barcodeResult.product?.calories ?? 0) * barcodeGrams / 100)} kcal`, color: "#fff" },
+                      { label: "タンパク質", value: `${Math.round((barcodeResult.product?.protein ?? 0) * barcodeGrams / 100 * 10) / 10}g`, color: "#4ade80" },
+                      { label: "脂質",       value: `${Math.round((barcodeResult.product?.fat ?? 0) * barcodeGrams / 100 * 10) / 10}g`, color: "#fbbf24" },
+                      { label: "炭水化物",   value: `${Math.round((barcodeResult.product?.carbs ?? 0) * barcodeGrams / 100 * 10) / 10}g`, color: "#60a5fa" },
+                      ...(barcodeResult.product?.fiber  != null ? [{ label: "食物繊維", value: `${Math.round(barcodeResult.product.fiber * barcodeGrams / 100 * 10) / 10}g`, color: "#a78bfa" }] : []),
+                      ...(barcodeResult.product?.sodium != null ? [{ label: "食塩",    value: `${Math.round(barcodeResult.product.sodium * barcodeGrams / 100 * 10) / 10}mg`, color: "#f87171" }] : []),
                     ].map(({ label, value, color }) => (
                       <div key={label}>
                         <p style={{ fontSize: 10, color: "#555", marginBottom: 2 }}>{label}</p>
@@ -543,7 +580,7 @@ export default function Home() {
                   )}
 
                   <div style={{ display: "flex", gap: 10 }}>
-                    <button onClick={() => setBarcodeResult(null)} style={secBtn}>閉じる</button>
+                    <button onClick={() => { setBarcodeResult(null); setBarcodeGrams(100); }} style={secBtn}>閉じる</button>
                     <button onClick={handleSaveBarcodeToLog} style={priBtn}>食事に記録する</button>
                   </div>
                 </>
