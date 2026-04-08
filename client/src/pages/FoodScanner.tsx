@@ -2,11 +2,12 @@ import DashboardLayout from "@/components/DashboardLayout";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera, Upload, AlertTriangle, Info, Zap,
-  X, Apple, ScanLine
+  X, Apple, ScanLine, ChevronDown
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState, useRef, useCallback } from "react";
 import { addMealLog } from "../utils/mealLog";
+import { getScoreBand } from "../utils/foodScoring";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -27,6 +28,7 @@ interface FoodAnalysisResult {
   totalProtein: number;
   totalFat: number;
   totalCarbs: number;
+  totalFiber?: number;
   healthScore: number;
   advice: string;
   confidence: 'high' | 'medium' | 'low';
@@ -40,9 +42,10 @@ const API_BASE = typeof window !== 'undefined' && window.location.protocol === '
   : '';
 
 function scoreStyle(score: number) {
-  if (score >= 80) return { badge: 'bg-teal/10 text-teal', ring: 'oklch(0.72 0.15 200)' };
-  if (score >= 60) return { badge: 'bg-amber/10 text-amber', ring: 'oklch(0.78 0.16 75)' };
-  return { badge: 'bg-destructive/10 text-destructive', ring: 'oklch(0.60 0.22 25)' };
+  const band = getScoreBand(score);
+  if (band.color === 'green') return { badge: 'bg-teal/10 text-teal', ring: '#22c55e', label: band.label };
+  if (band.color === 'yellow') return { badge: 'bg-amber/10 text-amber', ring: '#eab308', label: band.label };
+  return { badge: 'bg-destructive/10 text-destructive', ring: '#ef4444', label: band.label };
 }
 
 /* ------------------------------------------------------------------ */
@@ -89,6 +92,7 @@ export default function FoodScanner() {
   const [analysisResult, setAnalysisResult] = useState<FoodAnalysisResult | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState(false);
+  const [showScoreDetail, setShowScoreDetail] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const analyzeFood = useCallback(async (file: File) => {
@@ -107,6 +111,16 @@ export default function FoodScanner() {
       const healthPayload = bloodTestRaw || healthCheckRaw;
       if (healthPayload) {
         formData.append('healthData', healthPayload);
+      }
+
+      // ユーザープロフィール（ゴール・体重）を送信
+      const goalRaw = localStorage.getItem('userGoal');
+      const weightRaw = localStorage.getItem('userWeight');
+      if (goalRaw || weightRaw) {
+        formData.append('userProfile', JSON.stringify({
+          goal: goalRaw || undefined,
+          weight: weightRaw ? Number(weightRaw) : undefined,
+        }));
       }
 
       const controller = new AbortController();
@@ -162,6 +176,7 @@ export default function FoodScanner() {
     setPreviewUrl(null);
     setAnalysisResult(null);
     setAnalysisError(null);
+    setShowScoreDetail(false);
   };
 
   const handleSaveMeal = () => {
@@ -354,8 +369,46 @@ export default function FoodScanner() {
                   </div>
                   <div className="flex flex-col items-center shrink-0">
                     <ScoreRing score={analysisResult.healthScore} />
-                    <p className="text-[10px] text-muted-foreground mt-1.5">健康スコア</p>
+                    <span className="text-[11px] font-bold mt-1" style={{ color: scoreStyle(analysisResult.healthScore).ring }}>
+                      {scoreStyle(analysisResult.healthScore).label}
+                    </span>
                   </div>
+                </div>
+
+                {/* Score explanation collapsible */}
+                <div className="px-5 pb-4">
+                  <button
+                    onClick={() => setShowScoreDetail(!showScoreDetail)}
+                    className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showScoreDetail ? 'rotate-180' : ''}`} />
+                    このスコアの根拠
+                  </button>
+                  <AnimatePresence>
+                    {showScoreDetail && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="mt-2 text-[11px] text-muted-foreground space-y-1 pl-1">
+                          <p className="mb-1.5">このスコアは以下を考慮しています：</p>
+                          <p>✅ 栄養バランス（タンパク質・脂質・炭水化物・食物繊維）</p>
+                          {localStorage.getItem('bloodTestResults') || localStorage.getItem('healthCheckData')
+                            ? <p>✅ 健康診断データ</p>
+                            : null}
+                          {localStorage.getItem('userGoal')
+                            ? <p>✅ 設定中のゴール</p>
+                            : null}
+                          <p className="mt-2 text-[10px] opacity-70">※ 本スコアは医療診断ではありません。生活習慣改善の参考としてご活用ください。</p>
+                          {!localStorage.getItem('bloodTestResults') && !localStorage.getItem('healthCheckData') && (
+                            <p className="mt-1 text-[10px] text-teal">💡 健康診断データを登録するとスコアがより精度よくなります</p>
+                          )}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               </div>
 

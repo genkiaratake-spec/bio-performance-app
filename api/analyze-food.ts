@@ -7,16 +7,20 @@ export const config = { api: { bodyParser: false } };
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-function parseForm(req: VercelRequest): Promise<{ buffer: Buffer; mimeType: string; healthData?: any }> {
+function parseForm(req: VercelRequest): Promise<{ buffer: Buffer; mimeType: string; healthData?: any; userProfile?: any }> {
   return new Promise((resolve, reject) => {
     const bb = busboy({ headers: req.headers, limits: { fileSize: 20 * 1024 * 1024 } });
     let fileBuffer: Buffer | null = null;
     let mimeType = 'image/jpeg';
     let healthData: any = undefined;
+    let userProfile: any = undefined;
 
     bb.on('field', (name, value) => {
       if (name === 'healthData') {
         try { healthData = JSON.parse(value); } catch {}
+      }
+      if (name === 'userProfile') {
+        try { userProfile = JSON.parse(value); } catch {}
       }
     });
 
@@ -28,12 +32,55 @@ function parseForm(req: VercelRequest): Promise<{ buffer: Buffer; mimeType: stri
     });
 
     bb.on('finish', () => {
-      if (fileBuffer) resolve({ buffer: fileBuffer, mimeType, healthData });
+      if (fileBuffer) resolve({ buffer: fileBuffer, mimeType, healthData, userProfile });
       else reject(new Error('ファイルが見つかりません'));
     });
     bb.on('error', reject);
     req.pipe(bb);
   });
+}
+
+function calcScoreServer(nutrition: any, health: any, userProfile: any): number {
+  const weight = userProfile?.weight ?? 60;
+  const fiber = nutrition.totalFiber ?? 0;
+
+  // Layer A
+  let layerA = 0;
+  const proteinRatio = nutrition.totalProtein / (weight * 0.5);
+  layerA += Math.min(20, Math.round(proteinRatio * 20));
+  const fatRatio = (nutrition.totalFat * 9) / Math.max(nutrition.totalCalories, 1);
+  if (fatRatio >= 0.20 && fatRatio <= 0.30) layerA += 15;
+  else if (fatRatio >= 0.15) layerA += 10;
+  else if (fatRatio <= 0.40) layerA += 8;
+  else layerA += 3;
+  const carbRatio = (nutrition.totalCarbs * 4) / Math.max(nutrition.totalCalories, 1);
+  if (carbRatio >= 0.40 && carbRatio <= 0.60) layerA += 15;
+  else if (carbRatio >= 0.30) layerA += 10;
+  else if (carbRatio <= 0.70) layerA += 8;
+  else layerA += 3;
+  if (fiber >= 8) layerA += 10;
+  else if (fiber >= 5) layerA += 7;
+  else if (fiber >= 3) layerA += 4;
+  layerA = Math.min(60, layerA);
+
+  // Layer B
+  let layerB = 0;
+  if (health) {
+    if ((health.ldlCholesterol ?? 0) >= 120 && nutrition.totalFat >= 35) layerB -= 10;
+    if ((health.triglycerides ?? 0) >= 150 && nutrition.totalCarbs >= 50) layerB -= 10;
+    if ((health.bmi ?? 0) >= 25 && nutrition.totalCalories >= 700) layerB -= 10;
+    if ((health.ferritin ?? 999) < 25 && fiber >= 5) layerB += 10;
+    if ((health.crp ?? 0) >= 0.3 && nutrition.totalFat <= 20) layerB += 10;
+    layerB = Math.max(-15, Math.min(15, layerB));
+  }
+
+  // Layer C
+  let layerC = 0;
+  if (userProfile?.goal === 'muscle' && nutrition.totalProtein >= 25) layerC = 10;
+  if (userProfile?.goal === 'diet' && nutrition.totalCalories <= 500) layerC = 10;
+  if (userProfile?.goal === 'nutrition' && fiber >= 8) layerC = 10;
+
+  return Math.max(0, Math.min(100, layerA + layerB + layerC));
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -44,7 +91,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { buffer, mimeType, healthData } = await parseForm(req);
+    const { buffer, mimeType, healthData, userProfile } = await parseForm(req);
 
     // sharpでJPEGに変換（HEIC含む全形式対応・リサイズも同時実行）
     let processedBuffer = buffer;
@@ -70,60 +117,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const base64Data = processedBuffer.toString('base64');
     const imageMediaType = processedMediaType;
 
-    // bloodTestResults 形式（markers[]）と旧形式（ldlCholesterol等）の両方に対応
-    let healthContext = '';
+    // healthData から旧形式のフラット構造を抽出（Layer B 計算用）
+    let healthDataParsed: any = undefined;
     if (healthData) {
       if (Array.isArray(healthData.markers) && healthData.markers.length > 0) {
-        // 新形式: bloodTestResults（markers[]）
-        const lowMarkers   = healthData.markers.filter((m: any) => m.status === 'low');
-        const highMarkers  = healthData.markers.filter((m: any) => m.status === 'borderline');
-
-        const lowNames  = lowMarkers.map((m: any) => m.name).join('、') || 'なし';
-        const highNames = highMarkers.map((m: any) => m.name).join('、') || 'なし';
-
-        healthContext = `
-【このユーザーの血液検査データ（AIによる解析結果）】
-- 不足・低値の項目: ${lowNames}
-- 要注意の項目: ${highNames}
-
-血液検査結果を考慮して healthScore と advice を生成してください：
-
-不足バイオマーカーへの対応（スコアアップ要因）:
-- フェリチン/鉄 が低値 → 赤身肉・レバー・ほうれん草・あさりを含む料理を高評価し、adviceでこれらを推奨
-- ビタミンD が低値 → 鮭・サバ・イワシ・きのこ類・卵を含む料理を高評価し、adviceでこれらを推奨
-- 亜鉛 が低値 → 牡蠣・牛肉・ナッツ類を含む料理を高評価
-- マグネシウム が低値 → 海藻・ナッツ・豆類を含む料理を高評価
-
-要注意バイオマーカーへの対応（スコアダウン要因）:
-- 中性脂肪/トリグリセリド が要注意 → 揚げ物・白米過多・砂糖多めの食事はスコアを下げ、adviceで注意喚起
-- LDL/コレステロール が要注意 → 飽和脂肪酸多い食事（バター・肉の脂身・揚げ物）はスコアを下げる
-- 血糖/HbA1c が要注意 → 糖質過多の食事はスコアを下げ、食物繊維・低GI食を推奨
-- CRP が要注意 → 加工肉・超加工食品・トランス脂肪酸はスコアを下げる
-`;
+        // 新形式: markers[] → フラット構造に変換
+        const findValue = (name: string) => {
+          const marker = healthData.markers.find((m: any) =>
+            m.name?.toLowerCase().includes(name.toLowerCase())
+          );
+          return marker?.value;
+        };
+        healthDataParsed = {
+          ldlCholesterol: findValue('LDL') ?? findValue('ldl'),
+          triglycerides: findValue('中性脂肪') ?? findValue('triglyceride') ?? findValue('TG'),
+          ferritin: findValue('フェリチン') ?? findValue('ferritin'),
+          crp: findValue('CRP') ?? findValue('crp'),
+          bmi: findValue('BMI') ?? findValue('bmi'),
+        };
       } else {
-        // 旧形式: healthCheckData（ldlCholesterol等のフラット構造）
-        healthContext = `
-【このユーザーの健康診断データ】
-- LDLコレステロール: ${healthData.ldlCholesterol ?? '不明'} mg/dL（基準値60-119）
-- HDLコレステロール: ${healthData.hdlCholesterol ?? '不明'} mg/dL（基準値40-119）
-- 中性脂肪: ${healthData.triglycerides ?? '不明'} mg/dL（基準値0-149）
-- 血糖値: ${healthData.bloodSugar ?? '不明'} mg/dL（基準値70-99）
-- HbA1c: ${healthData.hba1c ?? '不明'} %（基準値0-5.5）
-- CRP: ${healthData.crp ?? '不明'} mg/dL（基準値0-0.30）
-- フェリチン: ${healthData.ferritin ?? '不明'} ng/mL
-- BMI: ${healthData.bmi ?? '不明'}
-- 総合判定: ${healthData.overallRating ?? '不明'}
-- 異常フラグ: ${healthData.abnormalFlags?.join('、') ?? 'なし'}
-
-このユーザーの健康状態を考慮して healthScore を計算してください：
-- LDLが120以上の場合、脂質の多い食事（揚げ物・肉の脂身・バター）はスコアを大きく下げる
-- 中性脂肪が150以上の場合、糖質・アルコールを含む食事はスコアを下げる
-- CRPが0.30以上の場合、炎症を促進する食事（加工肉・トランス脂肪酸）はスコアを下げる
-- フェリチンが低い場合、鉄分を含む食事はスコアを上げる
-- BMIが25以上の場合、高カロリー食はスコアを下げる
-`;
+        // 旧形式: そのまま利用
+        healthDataParsed = healthData;
       }
     }
+
+    const userProfileParsed = userProfile ?? undefined;
 
     const message = await client.messages.create({
       model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
@@ -139,7 +157,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             type: 'text',
             text: `あなたはJSONのみを返すAPIです。説明文・前置き・コードブロック記号(\`\`\`)は一切含めず、必ずJSONオブジェクト { } のみで応答してください。
 
-${healthContext}この食事の写真を詳しく分析してください。
+このサービスは医療診断ではなく生活習慣改善支援のウェルネスツールです。
+栄養素の数値推定のみ行い、病名・疾患名・診断的表現は使用禁止。
+adviceフィールドには「〜が期待できます」「〜の参考として」等の限定表現を使用。
+
+この食事の写真を詳しく分析してください。
 日本食・アジア料理・西洋料理を含む世界各地の料理に精通しており、
 日本のコンビニ食・定食・弁当・ファストフード・家庭料理についても
 正確にカロリーと栄養素を推定できます。
@@ -163,7 +185,7 @@ ${healthContext}この食事の写真を詳しく分析してください。
   "totalProtein": 合計タンパク質g数値,
   "totalFat": 合計脂質g数値,
   "totalCarbs": 合計炭水化物g数値,
-  "healthScore": 健康スコア1-100の数値（野菜多め・バランス良い=高スコア、揚げ物・糖質多め=低スコア）,
+  "totalFiber": 合計食物繊維g数値（推定値。不明な場合は0）,
   "advice": "この食事に対する具体的な栄養コメント（日本語・2文程度・参考情報として良い点や工夫できる点を含む。「改善します」「治ります」等の断定表現は使わず「〜が期待できます」等の限定表現を使用）",
   "confidence": "high/medium/low（画像から食事を明確に識別できた場合high）"
 }
@@ -189,7 +211,9 @@ mealName を「認識不可」にしてください。`
       console.error('JSON parse failed:', jsonMatch[0].substring(0, 200));
       return res.status(500).json({ success: false, error: 'レスポンスのJSON解析に失敗しました' });
     }
-    return res.status(200).json({ success: true, data: foodData });
+
+    const healthScore = calcScoreServer(foodData, healthDataParsed, userProfileParsed);
+    return res.status(200).json({ success: true, data: { ...foodData, healthScore } });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error('analyze-food error:', msg);
