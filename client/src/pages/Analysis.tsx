@@ -69,16 +69,36 @@ function extractHealthDataFromBloodTest(): any {
 /*  Client-side insight generation                                     */
 /* ------------------------------------------------------------------ */
 function generateInsight(entries: BiomarkerEntry[]): string {
-  const oor = entries.filter(e => e.status === 'out_of_range');
-  const suf = entries.filter(e => e.status === 'sufficient');
-  if (oor.length === 0 && suf.length === 0) {
-    return 'すべてのバイオマーカーが至適域です。この状態を維持しましょう。';
+  const outOfRange = entries.filter(e => e.status === 'out_of_range');
+  const sufficient = entries.filter(e => e.status === 'sufficient');
+  const optimal = entries.filter(e => e.status === 'optimal');
+  const measured = entries.filter(e => e.status !== 'unavailable');
+
+  if (outOfRange.length >= 3) {
+    const names = outOfRange.slice(0, 3).map(e => e.label).join('・');
+    return `${names}など${outOfRange.length}項目が要注意です。サプリ推奨画面で改善プランを確認しましょう。`;
   }
-  if (oor.length > 0) {
-    const names = oor.slice(0, 3).map(e => e.label).join('・');
-    return `${names}が要注意域です。サプリメント推奨と食事改善で改善が期待できます。詳細を確認しましょう。`;
+  if (outOfRange.length === 2) {
+    const names = outOfRange.map(e => e.label).join('・');
+    return `${names}が要注意です。サプリ推奨画面で改善プランを確認しましょう。`;
   }
-  return `${suf.length}項目が充足域です。至適域を目指してさらなる改善を検討しましょう。`;
+  if (outOfRange.length === 1) {
+    return `${outOfRange[0].label}が要注意です。他の指標は概ね良好な状態です。`;
+  }
+  if (sufficient.length >= 2) {
+    const names = sufficient.slice(0, 2).map(e => e.label).join('・');
+    return `要注意項目はありません。${names}などをさらに最適域に近づけましょう。`;
+  }
+  if (sufficient.length === 1) {
+    return `要注意項目はありません。${sufficient[0].label}をさらに最適域に近づけましょう。`;
+  }
+  if (optimal.length > 0 && outOfRange.length === 0 && sufficient.length === 0) {
+    return `測定した${measured.length}項目すべてが最適域です。この状態を維持しましょう。`;
+  }
+  if (measured.length <= 3) {
+    return `現在${measured.length}項目を測定中です。より多くの項目を測定すると精度が上がります。`;
+  }
+  return `${measured.length}項目を測定しました。詳細はバイオマーカーリストで確認できます。`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -243,13 +263,7 @@ export default function Analysis() {
     return d;
   }, [comparison]);
 
-  const insight = useMemo(() => {
-    const cached = sessionStorage.getItem('labsInsight');
-    if (cached) return cached;
-    const text = generateInsight(entries);
-    sessionStorage.setItem('labsInsight', text);
-    return text;
-  }, [entries]);
+  const insight = useMemo(() => generateInsight(entries), [entries]);
 
   const history = useMemo(() => getHealthHistory(), []);
 
@@ -530,20 +544,8 @@ export default function Analysis() {
           marginBottom: 20,
         }}
       >
-        <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.6, marginBottom: 12 }}>
+        <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.6 }}>
           {insight}
-        </div>
-        <div
-          onClick={scrollToList}
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            color: '#a78bfa',
-            cursor: 'pointer',
-            letterSpacing: 0.5,
-          }}
-        >
-          EXPLORE YOUR LABS IN DETAIL <ArrowRight size={12} style={{ verticalAlign: 'middle', marginLeft: 4 }} />
         </div>
       </motion.div>
 

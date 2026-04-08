@@ -1,11 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useLocation } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, AlertTriangle, CheckCircle2, RefreshCw, Info } from "lucide-react";
-import { evaluateBiomarkers, groupByCategory, getCategoryScore } from '../lib/biomarkerEvaluation';
+import { useState, useEffect } from 'react';
+import { useLocation } from 'wouter';
+import { getLatestHealthCheck } from '../lib/healthHistory';
 import { getHighPriorityTests } from '../lib/additionalTestRecommendations';
-import { CATEGORY_LABELS } from '../types/healthCheck';
-import type { HealthCategory } from '../types/healthCheck';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -41,22 +37,20 @@ interface Preferences {
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
-const HEALTH_DATA_KEY = 'healthCheckData';
-const BLOOD_TEST_KEY = 'bloodTestResults';
-const PREFS_KEY = 'supplementPreferences';
-const CACHE_KEY = 'supplementsData';
+const API_BASE = typeof window !== 'undefined' && window.location.protocol === 'capacitor:'
+  ? 'https://bio-performance-app.vercel.app' : '';
 
-// Extract numeric health data from bloodTestResults markers format as fallback
+const BLOOD_TEST_KEY = 'bloodTestResults';
+const HEALTH_DATA_KEY = 'healthCheckData';
+
 function extractHealthDataFromBloodTest(): Record<string, any> | null {
   try {
     const raw = localStorage.getItem(BLOOD_TEST_KEY);
     if (!raw) return null;
     const bt = JSON.parse(raw);
     if (!bt.markers || bt.markers.length === 0) return null;
-
     const result: Record<string, any> = {};
-    const markers: Array<{ name: string; value: string; unit: string; status: string }> = bt.markers;
-
+    const markers: Array<{ name: string; value: string }> = bt.markers;
     const mapping: Record<string, string[]> = {
       ldlCholesterol: ['LDL', 'LDLコレステロール'],
       hdlCholesterol: ['HDL', 'HDLコレステロール'],
@@ -77,508 +71,367 @@ function extractHealthDataFromBloodTest(): Record<string, any> | null {
       cortisol: ['コルチゾール'],
       testosterone: ['テストステロン'],
     };
-
     for (const [key, aliases] of Object.entries(mapping)) {
       for (const alias of aliases) {
-        const marker = markers.find(m => m.name.includes(alias));
+        const marker = markers.find(m => m.name?.includes(alias));
         if (marker) {
           const num = parseFloat(marker.value);
           if (!isNaN(num)) { result[key] = num; break; }
         }
       }
     }
-
     return Object.keys(result).length > 0 ? result : null;
   } catch { return null; }
 }
 
-const API_BASE = typeof window !== 'undefined' && window.location.protocol === 'capacitor:'
-  ? 'https://bio-performance-app.vercel.app' : '';
-
-const MEDICATION_OPTIONS = [
-  { value: 'statin', label: 'スタチン系' },
-  { value: 'metformin', label: 'メトホルミン' },
-  { value: 'ppi', label: 'PPI（胃薬）' },
-  { value: 'warfarin', label: 'ワーファリン' },
-  { value: 'thyroid', label: '甲状腺薬' },
-  { value: 'ace', label: 'ACE阻害薬' },
-  { value: 'diuretic', label: '利尿薬' },
-  { value: 'oc', label: '経口避妊薬' },
-  { value: 'steroid', label: 'ステロイド' },
-  { value: 'nsaid', label: 'NSAIDs' },
-];
-
-const LIFESTYLE_OPTIONS = [
-  { value: 'vegan', label: '菜食主義' },
-  { value: 'hightraining', label: '高強度トレーニング' },
-  { value: 'sleepbad', label: '慢性睡眠不足' },
-  { value: 'stress', label: '高ストレス' },
-  { value: 'hashimoto', label: '橋本病' },
-  { value: 'apoe4', label: 'APOE ε4保有' },
-  { value: 'mthfr', label: 'MTHFR変異あり' },
-  { value: 'over40', label: '40歳以上' },
-  { value: 'male', label: '男性' },
-  { value: 'pregnant', label: '妊娠中' },
-  { value: 'winter', label: '現在冬季（12–3月）' },
-];
-
-const SYMPTOM_OPTIONS = [
-  { value: 'fatigue', label: '慢性疲労' },
-  { value: 'musclepain', label: '筋肉痛・回復遅延' },
-  { value: 'sleepissue', label: '入眠困難' },
-  { value: 'anxstress', label: '不安・ストレス感' },
-  { value: 'brainfog', label: '集中力低下' },
-  { value: 'joint', label: '関節痛' },
-];
-
-const PRIORITY_CONFIG = {
-  high:    { label: '高優先', color: '#ef4444', bg: '#ef444415', border: '#ef444440' },
-  medium:  { label: '中優先', color: '#f97316', bg: '#f9731615', border: '#f9731640' },
-  low:     { label: '低優先', color: '#4ade80', bg: '#4ade8015', border: '#4ade8040' },
-  caution: { label: '慎重',   color: '#6b7280', bg: '#6b728015', border: '#6b728040' },
-};
-
-const GRADE_CONFIG = {
-  A: { color: '#4ade80', bg: '#4ade8018' },
-  B: { color: '#60a5fa', bg: '#60a5fa18' },
-  C: { color: '#6b7280', bg: '#6b728018' },
-};
+function loadHealthData(): Record<string, any> | null {
+  const latest = getLatestHealthCheck();
+  if (latest && (latest.ldlCholesterol || latest.bmi || latest.hemoglobin)) return latest;
+  const raw = localStorage.getItem(HEALTH_DATA_KEY);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && (parsed.ldlCholesterol || parsed.bmi || parsed.hemoglobin)) return parsed;
+    } catch {}
+  }
+  return extractHealthDataFromBloodTest();
+}
 
 /* ------------------------------------------------------------------ */
-/*  Chip selector                                                      */
+/*  Recommend Card                                                     */
 /* ------------------------------------------------------------------ */
-function ChipSelector({ options, selected, onChange }: {
-  options: { value: string; label: string }[];
-  selected: string[];
-  onChange: (val: string[]) => void;
-}) {
-  const toggle = (val: string) => {
-    onChange(selected.includes(val) ? selected.filter(v => v !== val) : [...selected, val]);
+function RecommendCard({ rec }: { rec: Recommendation }) {
+  const borderColor = rec.priority === 'high' ? '#E24B4A'
+    : rec.priority === 'medium' ? '#EF9F27'
+    : rec.priority === 'low' ? '#1D9E75' : '#555560';
+  const gradeColors: Record<string, { bg: string; text: string }> = {
+    A: { bg: '#EAF3DE', text: '#3B6D11' },
+    B: { bg: '#E6F1FB', text: '#185FA5' },
+    C: { bg: '#F1EFE8', text: '#5F5E5A' },
   };
+  const gc = gradeColors[rec.grade] || gradeColors.C;
+
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-      {options.map(opt => {
-        const active = selected.includes(opt.value);
-        return (
-          <button key={opt.value} onClick={() => toggle(opt.value)} style={{
-            padding: '6px 12px', borderRadius: 999, fontSize: 11, fontWeight: 600,
-            background: active ? '#4ade8018' : '#1a1a28',
-            border: `1px solid ${active ? '#4ade80' : '#2a2a38'}`,
-            color: active ? '#4ade80' : '#777', cursor: 'pointer', transition: 'all 0.15s',
-          }}>
-            {opt.label}
-          </button>
-        );
-      })}
+    <div className="rounded-xl p-4 mb-3 border border-white/8"
+      style={{ background: '#111118', borderLeft: `3px solid ${borderColor}` }}>
+      <div className="flex items-start justify-between mb-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-white">{rec.name}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{rec.dose}</p>
+        </div>
+        <span className="text-xs font-medium px-2 py-0.5 rounded ml-2 flex-shrink-0"
+          style={{ background: gc.bg, color: gc.text }}>
+          エビデンス {rec.grade}
+        </span>
+      </div>
+      <p className="text-xs text-gray-400 leading-relaxed mb-2">{rec.reason}</p>
+      <div className="flex flex-wrap gap-1">
+        {rec.trigger && (
+          <span className="text-xs px-2 py-0.5 rounded" style={{ background: '#1a1a28', color: '#888' }}>
+            {rec.trigger}
+          </span>
+        )}
+        {rec.retestTiming && (
+          <span className="text-xs px-2 py-0.5 rounded" style={{ background: '#1a1a28', color: '#888' }}>
+            再検査: {rec.retestTiming}
+          </span>
+        )}
+      </div>
+      {rec.warning && (
+        <div className="mt-2 text-xs leading-relaxed px-2 py-1.5 rounded"
+          style={{ background: '#FAECE7', color: '#993C1D' }}>
+          {rec.warning}
+        </div>
+      )}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/*  Main component                                                     */
+/*  Prefs Form                                                         */
+/* ------------------------------------------------------------------ */
+function PrefsForm({ onSubmit }: { onSubmit: (p: Preferences) => void }) {
+  const [meds, setMeds] = useState<string[]>([]);
+  const [life, setLife] = useState<string[]>([]);
+  const [syms, setSyms] = useState<string[]>([]);
+
+  const toggle = (arr: string[], setArr: (v: string[]) => void, val: string) =>
+    setArr(arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val]);
+
+  const medList: [string, string][] = [
+    ['statin','スタチン系'],['metformin','メトホルミン'],['ppi','PPI（胃薬）'],
+    ['warfarin','ワーファリン'],['thyroid','甲状腺薬'],['ace','ACE阻害薬'],
+    ['diuretic','利尿薬'],['oc','経口避妊薬'],['steroid','ステロイド'],
+  ];
+  const lifeList: [string, string][] = [
+    ['vegan','菜食主義'],['hightraining','高強度トレーニング'],['sleepbad','慢性睡眠不足'],
+    ['stress','高ストレス'],['hashimoto','橋本病'],['apoe4','APOE ε4保有'],
+    ['mthfr','MTHFR変異あり'],['over40','40歳以上'],['male','男性'],
+    ['pregnant','妊娠中'],['winter','現在冬季'],
+  ];
+  const symList: [string, string][] = [
+    ['fatigue','慢性疲労'],['musclepain','筋肉痛・回復遅延'],['sleepissue','入眠困難'],
+    ['anxstress','不安・ストレス'],['brainfog','集中力低下'],['joint','関節痛'],
+  ];
+
+  const CheckGroup = ({ list, selected, setSelected }: { list: [string, string][]; selected: string[]; setSelected: (v: string[]) => void }) => (
+    <div className="flex flex-wrap gap-2 mb-4">
+      {list.map(([val, label]) => (
+        <button key={val}
+          onClick={() => toggle(selected, setSelected, val)}
+          className="text-xs px-3 py-1.5 rounded-full border transition-colors"
+          style={{
+            background: selected.includes(val) ? '#185FA520' : '#111118',
+            borderColor: selected.includes(val) ? '#185FA5' : '#333',
+            color: selected.includes(val) ? '#5a8ccc' : '#777',
+          }}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <div style={{ height: '100vh', overflowY: 'auto', background: '#0a0a0f', color: '#fff', padding: '52px 20px 100px' }}>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 4 }}>薬剤・ライフスタイル</h2>
+      <p style={{ fontSize: 13, color: '#666', marginBottom: 20 }}>
+        より正確な推奨のために教えてください（任意）
+      </p>
+      <p style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 8 }}>服用中の薬剤</p>
+      <CheckGroup list={medList} selected={meds} setSelected={setMeds} />
+      <p style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 8 }}>ライフスタイル・リスク</p>
+      <CheckGroup list={lifeList} selected={life} setSelected={setLife} />
+      <p style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 8 }}>気になる症状</p>
+      <CheckGroup list={symList} selected={syms} setSelected={setSyms} />
+      <button
+        onClick={() => onSubmit({ medications: meds, lifestyle: life, symptoms: syms })}
+        style={{
+          width: '100%', padding: 14, borderRadius: 14, background: '#fff', color: '#000',
+          fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer', marginTop: 8,
+        }}>
+        推奨を確認する
+      </button>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main Component                                                     */
 /* ------------------------------------------------------------------ */
 export default function Supplements() {
   const [, navigate] = useLocation();
-  const [hasHealthData, setHasHealthData] = useState<boolean | null>(null);
-  const [prefs, setPrefs] = useState<Preferences | null>(null);
-  const [data, setData] = useState<SupplementData | null>(null);
+  const [healthData, setHealthData] = useState<Record<string, any> | null>(null);
+  const [suppData, setSuppData] = useState<SupplementData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPrefs, setShowPrefs] = useState(false);
 
-  // Temp state for preference selection
-  const [tempMeds, setTempMeds] = useState<string[]>([]);
-  const [tempLife, setTempLife] = useState<string[]>([]);
-  const [tempSymp, setTempSymp] = useState<string[]>([]);
-
-  // Initialize - check healthCheckData first, then fallback to bloodTestResults
   useEffect(() => {
-    let hasData = false;
-    const healthRaw = localStorage.getItem(HEALTH_DATA_KEY);
-    if (healthRaw) {
-      try {
-        const parsed = JSON.parse(healthRaw);
-        if (parsed && (parsed.ldlCholesterol || parsed.bmi || parsed.hemoglobin)) {
-          hasData = true;
-        }
-      } catch {}
-    }
-    if (!hasData) {
-      // Fallback: try to extract from bloodTestResults
-      const extracted = extractHealthDataFromBloodTest();
-      if (extracted) {
-        hasData = true;
-        // Save as healthCheckData for future use
-        localStorage.setItem(HEALTH_DATA_KEY, JSON.stringify(extracted));
-      }
-    }
-    if (!hasData) { setHasHealthData(false); return; }
-    setHasHealthData(true);
+    const data = loadHealthData();
+    if (!data) return;
+    setHealthData(data);
 
-    // Restore preferences
-    const prefsRaw = localStorage.getItem(PREFS_KEY);
-    if (prefsRaw) {
-      try {
-        const savedPrefs: Preferences = JSON.parse(prefsRaw);
-        setPrefs(savedPrefs);
-        setTempMeds(savedPrefs.medications);
-        setTempLife(savedPrefs.lifestyle);
-        setTempSymp(savedPrefs.symptoms);
-      } catch {}
-    }
-
-    // Check cache
-    const cacheRaw = sessionStorage.getItem(CACHE_KEY);
-    if (cacheRaw) {
-      try { setData(JSON.parse(cacheRaw)); } catch {}
+    const cached = sessionStorage.getItem('supplementsData');
+    const savedPrefs = localStorage.getItem('supplementPreferences');
+    if (cached && savedPrefs) {
+      try { setSuppData(JSON.parse(cached)); } catch {}
+    } else if (savedPrefs) {
+      try { fetchSupplements(data, JSON.parse(savedPrefs)); } catch {}
+    } else {
+      setShowPrefs(true);
     }
   }, []);
 
-  // Fetch supplements
-  const fetchSupplements = useCallback(async (p: Preferences) => {
+  async function fetchSupplements(data: Record<string, any>, preferences: Preferences) {
     setLoading(true);
     setError(null);
     try {
-      let healthData = JSON.parse(localStorage.getItem(HEALTH_DATA_KEY) || '{}');
-      // Fallback if healthCheckData is empty
-      if (!healthData || (!healthData.ldlCholesterol && !healthData.bmi)) {
-        healthData = extractHealthDataFromBloodTest() || {};
-      }
       const res = await fetch(`${API_BASE}/api/analyze-supplements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          healthData,
-          medications: p.medications,
-          lifestyle: p.lifestyle,
-          symptoms: p.symptoms,
+          healthData: data,
+          medications: preferences.medications || [],
+          lifestyle: preferences.lifestyle || [],
+          symptoms: preferences.symptoms || [],
         }),
       });
-      const json = await res.json();
-      if (json.success && json.data) {
-        setData(json.data);
-        sessionStorage.setItem(CACHE_KEY, JSON.stringify(json.data));
+      const result = await res.json();
+      if (result.success && result.data) {
+        setSuppData(result.data);
+        sessionStorage.setItem('supplementsData', JSON.stringify(result.data));
+      } else if (result.drugAlerts !== undefined || result.recommendations !== undefined) {
+        setSuppData(result);
+        sessionStorage.setItem('supplementsData', JSON.stringify(result));
       } else {
-        throw new Error(json.error || '解析に失敗しました');
+        setError('推奨データの取得に失敗しました');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+    } catch {
+      setError('通信エラーが発生しました');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }
 
-  // Auto-fetch when prefs exist but no cached data
-  useEffect(() => {
-    if (prefs && !data && !loading && hasHealthData) {
-      fetchSupplements(prefs);
-    }
-  }, [prefs, data, loading, hasHealthData, fetchSupplements]);
-
-  const handleSubmitPrefs = () => {
-    const newPrefs: Preferences = { medications: tempMeds, lifestyle: tempLife, symptoms: tempSymp };
-    localStorage.setItem(PREFS_KEY, JSON.stringify(newPrefs));
-    setPrefs(newPrefs);
-    setData(null);
-    sessionStorage.removeItem(CACHE_KEY);
-    fetchSupplements(newPrefs);
-  };
-
-  const handleReset = () => {
-    sessionStorage.removeItem(CACHE_KEY);
-    localStorage.removeItem(PREFS_KEY);
-    setData(null);
-    setPrefs(null);
-    setTempMeds([]);
-    setTempLife([]);
-    setTempSymp([]);
-  };
-
-  /* ── No health data ── */
-  if (hasHealthData === false) {
+  // No health data
+  if (!healthData) {
     return (
-      <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
-        <div className="mb-6">
-          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">SUPPLEMENT OPTIMIZATION</p>
-          <h1 className="text-2xl font-bold text-white mb-2">サプリメント最適化</h1>
-        </div>
-        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          className="bg-[#111118] rounded-2xl p-10 flex flex-col items-center text-center border border-white/8">
-          <div className="text-5xl mb-4">💊</div>
-          <h2 className="text-xl font-bold text-white mb-2">健康診断データが未登録です</h2>
-          <p className="text-sm text-gray-400 mb-6 max-w-sm leading-relaxed">
-            まず健康診断・血液検査の結果をアップロードしてください。データに基づいたサプリメント推奨を生成します。
+      <div style={{ height: '100vh', overflowY: 'auto', background: '#0a0a0f', color: '#fff', padding: '52px 20px 100px' }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8 }}>サプリメント最適化</h1>
+        <div style={{ background: '#111118', border: '1px solid #222', borderRadius: 16, padding: '40px 24px', textAlign: 'center', marginTop: 20 }}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>💊</div>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>健康診断データがありません</h2>
+          <p style={{ fontSize: 12, color: '#666', marginBottom: 20 }}>
+            まず健康診断・血液検査の結果をアップロードしてください。
           </p>
-          <button onClick={() => navigate('/analysis')} className="flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-semibold text-black transition-colors" style={{ background: '#4ade80' }}>
-            健康診断をアップロード <ArrowRight size={16} />
+          <button onClick={() => navigate('/analysis')}
+            style={{ background: '#1D9E75', color: '#fff', border: 'none', borderRadius: 12, padding: '10px 24px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+            健康診断をアップロード
           </button>
-        </motion.div>
+        </div>
       </div>
     );
   }
 
-  /* ── Loading ── */
-  if (hasHealthData === null) return null;
-
-  /* ── Preference selection (no prefs yet OR no data) ── */
-  if (!prefs && !data) {
-    return (
-      <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
-        <div className="mb-6">
-          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">SUPPLEMENT OPTIMIZATION</p>
-          <h1 className="text-2xl font-bold text-white mb-2">サプリメント最適化</h1>
-          <p className="text-sm text-gray-400">薬剤・ライフスタイル・症状を選択してください。</p>
-        </div>
-
-        <div style={{ background: '#111118', border: '1px solid #222', borderRadius: 16, padding: 18, marginBottom: 14 }}>
-          <p style={{ fontSize: 12, color: '#888', marginBottom: 10, fontWeight: 600 }}>服用中の薬剤（複数選択可）</p>
-          <ChipSelector options={MEDICATION_OPTIONS} selected={tempMeds} onChange={setTempMeds} />
-        </div>
-
-        <div style={{ background: '#111118', border: '1px solid #222', borderRadius: 16, padding: 18, marginBottom: 14 }}>
-          <p style={{ fontSize: 12, color: '#888', marginBottom: 10, fontWeight: 600 }}>ライフスタイル・リスク（複数選択可）</p>
-          <ChipSelector options={LIFESTYLE_OPTIONS} selected={tempLife} onChange={setTempLife} />
-        </div>
-
-        <div style={{ background: '#111118', border: '1px solid #222', borderRadius: 16, padding: 18, marginBottom: 18 }}>
-          <p style={{ fontSize: 12, color: '#888', marginBottom: 10, fontWeight: 600 }}>主観的症状（複数選択可）</p>
-          <ChipSelector options={SYMPTOM_OPTIONS} selected={tempSymp} onChange={setTempSymp} />
-        </div>
-
-        <button onClick={handleSubmitPrefs} style={{
-          width: '100%', padding: '14px', borderRadius: 14, background: '#4ade80', color: '#000',
-          fontWeight: 700, fontSize: 15, border: 'none', cursor: 'pointer',
-        }}>
-          推奨を確認する
-        </button>
-
-        <p style={{ fontSize: 11, color: '#444', textAlign: 'center', marginTop: 12 }}>
-          ※ 選択しない項目はスキップ可能です
-        </p>
-      </div>
-    );
+  // Prefs selection
+  if (showPrefs) {
+    return <PrefsForm onSubmit={(p) => {
+      localStorage.setItem('supplementPreferences', JSON.stringify(p));
+      setShowPrefs(false);
+      fetchSupplements(healthData, p);
+    }} />;
   }
 
-  /* ── Loading state ── */
+  // Loading
   if (loading) {
     return (
-      <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto flex flex-col items-center justify-center" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
-        <div style={{ position: 'relative', width: 64, height: 64, marginBottom: 24 }}>
-          <div style={{ position: 'absolute', inset: 0, border: '4px solid rgba(74,222,128,0.15)', borderRadius: '50%' }} />
-          <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.1, repeat: Infinity, ease: 'linear' }}
-            style={{ position: 'absolute', inset: 0, border: '4px solid transparent', borderTopColor: '#4ade80', borderRadius: '50%' }} />
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0a0a0f', color: '#fff' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ width: 48, height: 48, border: '3px solid #222', borderTopColor: '#1D9E75', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+          <p style={{ fontSize: 13, color: '#666' }}>推奨を生成中...</p>
         </div>
-        <p className="text-sm text-gray-400">推奨を計算中...</p>
       </div>
     );
   }
 
-  /* ── Error ── */
+  // Error
   if (error) {
     return (
-      <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto flex flex-col items-center justify-center" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
-        <AlertTriangle className="w-12 h-12 text-red-400 mb-4" />
-        <p className="text-white font-bold mb-2">エラーが発生しました</p>
-        <p className="text-sm text-gray-400 mb-6">{error}</p>
-        <button onClick={() => prefs && fetchSupplements(prefs)} style={{
-          padding: '12px 24px', borderRadius: 12, background: '#4ade80', color: '#000', fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer',
-        }}>再試行</button>
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', background: '#0a0a0f', color: '#fff', padding: 20 }}>
+        <p style={{ fontSize: 14, color: '#E24B4A', marginBottom: 16 }}>{error}</p>
+        <button onClick={() => {
+          const p = JSON.parse(localStorage.getItem('supplementPreferences') || '{}');
+          fetchSupplements(healthData, p);
+        }} style={{ border: '1px solid #333', background: 'none', color: '#fff', borderRadius: 12, padding: '10px 24px', fontSize: 13, cursor: 'pointer' }}>
+          再試行
+        </button>
       </div>
     );
   }
 
-  /* ── Results ── */
-  if (!data) return null;
+  if (!suppData) return null;
 
-  const highCount = data.recommendations.filter(r => r.priority === 'high').length;
-
-  // Category evaluation
-  const categoryData = useMemo(() => {
-    try {
-      const healthData = JSON.parse(localStorage.getItem(HEALTH_DATA_KEY) || '{}');
-      const entries = evaluateBiomarkers(healthData);
-      const grouped = groupByCategory(entries);
-      return grouped;
-    } catch { return null; }
-  }, []);
-
-  const highPriorityMissing = useMemo(() => {
-    try {
-      const healthData = JSON.parse(localStorage.getItem(HEALTH_DATA_KEY) || '{}');
-      return getHighPriorityTests(healthData);
-    } catch { return []; }
-  }, []);
-
-  // Supplement → category mapping
-  const SUPP_CATEGORIES: Record<string, HealthCategory[]> = {
-    'ビタミンD3 + K2': ['nutrients', 'inflammation', 'cognition'],
-    'ビタミンD3': ['nutrients', 'inflammation', 'cognition'],
-    'Omega-3（EPA+DHA）': ['heart', 'inflammation', 'cognition'],
-    'Omega-3（DHA優位）': ['heart', 'inflammation', 'cognition'],
-    '鉄（ビスグリシン酸鉄）': ['nutrients', 'fitness'],
-    'ビタミンB12（メチルコバラミン）': ['nutrients', 'cognition'],
-    'ビタミンB12検査': ['nutrients', 'cognition'],
-    '5-MTHF（活性型葉酸）+ メチルB12': ['nutrients', 'cognition'],
-    '葉酸 + B群複合（B6・B12）': ['nutrients', 'cognition'],
-    '亜鉛（グリシン酸亜鉛）': ['nutrients', 'hormones'],
-    'CoQ10（ユビキノール）': ['metabolism', 'fitness'],
-    'ベルベリン': ['metabolism', 'heart'],
-    'クルクミン + ピペリン': ['inflammation', 'heart'],
-    'アシュワガンダ（KSM-66）': ['hormones'],
-    'マグネシウム（グリシン酸Mg）': ['cognition'],
-    'クレアチンモノハイドレート': ['fitness', 'cognition'],
-    'セレン（セレノメチオニン）': ['hormones', 'inflammation'],
-    'NMN': ['metabolism', 'hormones'],
-  };
+  const { drugAlerts = [], recommendations = [], notNeeded = [] } = suppData;
+  const high = recommendations.filter(r => r.priority === 'high');
+  const medium = recommendations.filter(r => r.priority === 'medium');
+  const low = recommendations.filter(r => r.priority === 'low');
+  const caution = recommendations.filter(r => r.priority === 'caution');
+  const highPriorityTests = getHighPriorityTests(healthData as any);
 
   return (
-    <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
+    <div style={{ height: '100vh', overflowY: 'auto', background: '#0a0a0f', color: '#fff', padding: '52px 20px 100px' }}>
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">SUPPLEMENT OPTIMIZATION</p>
-          <h1 className="text-2xl font-bold text-white mb-2">サプリメント最適化</h1>
-          <p className="text-sm text-gray-400">血液検査結果に基づいた論文ベースの推奨です。</p>
+          <p style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.15em', marginBottom: 4 }}>Supplement Optimization</p>
+          <h1 style={{ fontSize: 20, fontWeight: 700 }}>サプリメント最適化</h1>
         </div>
-        <button onClick={handleReset}
-          className="shrink-0 mt-1 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:border-green-500/40 hover:text-green-400 transition-colors whitespace-nowrap">
-          <RefreshCw size={12} />再解析
+        <button onClick={() => {
+          sessionStorage.removeItem('supplementsData');
+          localStorage.removeItem('supplementPreferences');
+          setShowPrefs(true);
+          setSuppData(null);
+        }} style={{ fontSize: 11, color: '#666', background: '#111118', border: '1px solid #222', borderRadius: 8, padding: '6px 12px', cursor: 'pointer' }}>
+          再解析
         </button>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {[
-          { label: '推奨サプリ', value: `${data.recommendations.length}`, color: 'text-white' },
-          { label: '高優先度', value: `${highCount}`, color: 'text-red-400' },
-          { label: '薬剤アラート', value: `${data.drugAlerts.length}`, color: data.drugAlerts.length > 0 ? 'text-orange-400' : 'text-gray-500' },
-        ].map(item => (
-          <div key={item.label} className="bg-[#111118] rounded-xl p-3 border border-white/8 text-center">
-            <p className="text-xs text-gray-500 mb-1">{item.label}</p>
-            <p className={`text-xl font-bold ${item.color}`}>{item.value}</p>
-          </div>
-        ))}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 16 }}>
+        <div style={{ background: '#111118', border: '1px solid #1e1e28', borderRadius: 12, padding: 12, textAlign: 'center' }}>
+          <p style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>推奨数</p>
+          <p style={{ fontSize: 20, fontWeight: 800, color: '#fff' }}>{recommendations.length}</p>
+        </div>
+        <div style={{ background: '#111118', border: '1px solid #1e1e28', borderRadius: 12, padding: 12, textAlign: 'center' }}>
+          <p style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>高優先度</p>
+          <p style={{ fontSize: 20, fontWeight: 800, color: '#E24B4A' }}>{high.length}</p>
+        </div>
+        <div style={{ background: '#111118', border: '1px solid #1e1e28', borderRadius: 12, padding: 12, textAlign: 'center' }}>
+          <p style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>薬剤注意</p>
+          <p style={{ fontSize: 20, fontWeight: 800, color: drugAlerts.length > 0 ? '#d4913a' : '#1D9E75' }}>{drugAlerts.length}</p>
+        </div>
       </div>
 
-      {/* Category dots */}
-      {categoryData && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-          {(Object.keys(CATEGORY_LABELS) as HealthCategory[]).map(cat => {
-            const entries = categoryData[cat] || [];
-            const score = getCategoryScore(entries);
-            const dotColor = score.outOfRange > 0 ? '#E24B4A' : score.optimal > 0 ? '#1D9E75' : '#185FA5';
-            const isBad = score.outOfRange > 0;
-            return (
-              <button key={cat} onClick={() => navigate('/analysis')}
-                style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#111118', border: '1px solid #222', borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, display: 'inline-block' }} />
-                <span style={{ fontSize: 10, color: isBad ? '#E24B4A' : '#888', fontWeight: isBad ? 700 : 500 }}>{CATEGORY_LABELS[cat]}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Unmeasured banner */}
-      {highPriorityMissing.length >= 3 && (
-        <div style={{ background: '#185FA510', border: '1px solid #185FA530', borderRadius: 12, padding: '12px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <p style={{ fontSize: 12, color: '#60a5fa' }}>{highPriorityMissing.length}項目を追加測定すると推奨精度が上がります</p>
-          <button onClick={() => navigate('/analysis')} style={{ fontSize: 11, color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>確認する →</button>
+      {/* Additional test banner */}
+      {highPriorityTests.length >= 3 && (
+        <div style={{ background: '#185FA510', border: '1px solid #185FA530', borderRadius: 12, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <p style={{ fontSize: 11, color: '#5a8ccc' }}>{highPriorityTests.length}項目を追加測定すると推奨精度が上がります</p>
+          <button onClick={() => navigate('/analysis')} style={{ fontSize: 11, color: '#5a8ccc', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>確認→</button>
         </div>
       )}
 
       {/* Drug alerts */}
-      {data.drugAlerts.length > 0 && (
-        <div className="mb-6 space-y-2">
-          {data.drugAlerts.map((alert, i) => (
-            <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-              style={{ background: '#f9731612', border: '1px solid #f9731630', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-              <AlertTriangle style={{ width: 16, height: 16, color: '#f97316', flexShrink: 0, marginTop: 2 }} />
-              <p style={{ fontSize: 12, color: '#f97316', lineHeight: 1.6 }}>{alert}</p>
-            </motion.div>
-          ))}
+      {drugAlerts.map((alert, i) => (
+        <div key={i} style={{ background: '#2a1f0e', border: '1px solid #d4913a30', borderRadius: 12, padding: '10px 14px', marginBottom: 8, fontSize: 12, color: '#d4913a', lineHeight: 1.6 }}>
+          ⚠️ {alert}
         </div>
+      ))}
+
+      {/* Recommendations by priority */}
+      {high.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#E24B4A', marginTop: 16, marginBottom: 8 }}>優先度：高</p>
+          {high.map((r, i) => <RecommendCard key={`h${i}`} rec={r} />)}
+        </>
+      )}
+      {medium.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#d4913a', marginTop: 16, marginBottom: 8 }}>優先度：中</p>
+          {medium.map((r, i) => <RecommendCard key={`m${i}`} rec={r} />)}
+        </>
+      )}
+      {low.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#1D9E75', marginTop: 16, marginBottom: 8 }}>優先度：低</p>
+          {low.map((r, i) => <RecommendCard key={`l${i}`} rec={r} />)}
+        </>
+      )}
+      {caution.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#666', marginTop: 16, marginBottom: 8 }}>慎重推奨</p>
+          {caution.map((r, i) => <RecommendCard key={`c${i}`} rec={r} />)}
+        </>
       )}
 
-      {/* Recommendations */}
-      <div className="space-y-3 mb-6">
-        {data.recommendations.map((rec, i) => {
-          const pc = PRIORITY_CONFIG[rec.priority];
-          const gc = GRADE_CONFIG[rec.grade];
-          return (
-            <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + i * 0.04 }}
-              style={{ background: '#111118', borderRadius: 14, padding: 16, borderLeft: `4px solid ${pc.color}`, border: `1px solid #222`, borderLeftColor: pc.color, borderLeftWidth: 4 }}>
-              {/* Header: name + badges */}
-              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{rec.name}</span>
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: pc.color, background: pc.bg, border: `1px solid ${pc.border}` }}>
-                  {pc.label}
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: gc.color, background: gc.bg }}>
-                  Grade {rec.grade}
-                </span>
-                {(SUPP_CATEGORIES[rec.name] || []).map(cat => (
-                  <span key={cat} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 999, color: '#888', background: '#ffffff08', border: '1px solid #333' }}>
-                    {CATEGORY_LABELS[cat]}
-                  </span>
-                ))}
-              </div>
-
-              {/* Dose */}
-              <div style={{ background: '#0e0e15', borderRadius: 8, padding: '8px 12px', marginBottom: 8 }}>
-                <p style={{ fontSize: 10, color: '#555', marginBottom: 2 }}>投与量</p>
-                <p style={{ fontSize: 12, color: '#ccc', fontWeight: 600 }}>{rec.dose}</p>
-              </div>
-
-              {/* Reason */}
-              <p style={{ fontSize: 12, color: '#999', lineHeight: 1.7, marginBottom: 8 }}>{rec.reason}</p>
-
-              {/* Tags */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                {rec.trigger && (
-                  <span style={{ fontSize: 10, color: '#60a5fa', background: '#60a5fa15', padding: '3px 8px', borderRadius: 6 }}>
-                    検出値: {rec.trigger}
-                  </span>
-                )}
-                {rec.retestTiming && (
-                  <span style={{ fontSize: 10, color: '#a78bfa', background: '#a78bfa15', padding: '3px 8px', borderRadius: 6 }}>
-                    再検査: {rec.retestTiming}
-                  </span>
-                )}
-              </div>
-
-              {/* Warning */}
-              {rec.warning && (
-                <div style={{ background: '#f9731610', border: '1px solid #f9731625', borderRadius: 8, padding: '8px 10px' }}>
-                  <p style={{ fontSize: 11, color: '#f97316', lineHeight: 1.5 }}>⚠️ {rec.warning}</p>
-                </div>
-              )}
-            </motion.div>
-          );
-        })}
-      </div>
-
       {/* Not needed */}
-      {data.notNeeded.length > 0 && (
-        <div className="mb-6">
-          <p style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, fontWeight: 600 }}>補充不要</p>
-          <div className="space-y-2">
-            {data.notNeeded.map((item, i) => (
-              <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 + i * 0.03 }}
-                style={{ background: '#111118', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #4ade80', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                <CheckCircle2 style={{ width: 14, height: 14, color: '#4ade80', flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#4ade80' }}>{item.name}</span>
-                  <p style={{ fontSize: 11, color: '#777', marginTop: 2 }}>{item.reason}</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
+      {notNeeded.length > 0 && (
+        <>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#555', marginTop: 16, marginBottom: 8 }}>補充不要</p>
+          {notNeeded.map((r, i) => (
+            <div key={i} style={{ background: '#111118', border: '1px solid #1e1e28', borderRadius: 12, padding: '10px 14px', marginBottom: 8, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1D9E75', flexShrink: 0, marginTop: 4 }} />
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#1D9E75' }}>{r.name}</p>
+                <p style={{ fontSize: 11, color: '#666', marginTop: 2 }}>{r.reason}</p>
+              </div>
+            </div>
+          ))}
+        </>
       )}
 
       {/* Disclaimer */}
-      <div style={{ background: '#111118', border: '1px solid #222', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8 }}>
-        <Info style={{ width: 14, height: 14, color: '#555', flexShrink: 0, marginTop: 2 }} />
+      <div style={{ background: '#111118', border: '1px solid #1e1e28', borderRadius: 12, padding: '10px 14px', marginTop: 20, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+        <span style={{ fontSize: 12, flexShrink: 0 }}>ℹ️</span>
         <p style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>
           この推奨は学術論文に基づく情報提供です。医療行為ではありません。必ず医師・薬剤師にご相談ください。
         </p>
