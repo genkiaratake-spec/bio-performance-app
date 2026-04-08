@@ -31,8 +31,8 @@ interface BloodTestResults {
 /* ------------------------------------------------------------------ */
 const STATUS_CONFIG = {
   ok:         { label: "正常",   color: "text-teal",        bg: "bg-teal/10",        border: "border-teal/20" },
-  borderline: { label: "要注意", color: "text-amber",       bg: "bg-amber/10",       border: "border-amber/20" },
-  low:        { label: "不足",   color: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/20" },
+  borderline: { label: "要確認", color: "text-amber",       bg: "bg-amber/10",       border: "border-amber/20" },
+  low:        { label: "要確認", color: "text-destructive", bg: "bg-destructive/10", border: "border-destructive/20" },
 };
 
 const BLOOD_TEST_KEY = "bloodTestResults";
@@ -79,15 +79,15 @@ function calcInsights(markers: Marker[], logs: DailyFoodLog[], userProfile: any)
     if (avgProteinPct < 70) {
       insights.push({
         icon: '🥩', color: 'amber',
-        title: '鉄分・タンパク質が不足傾向',
-        message: `過去${daysRecorded}日のタンパク質平均達成率は${Math.round(avgProteinPct)}%です。鉄分を含む食品の摂取が少ない傾向があります。`,
+        title: '鉄分・タンパク質関連の指標に着目',
+        message: `過去${daysRecorded}日のタンパク質平均達成率は${Math.round(avgProteinPct)}%です。鉄分を含む食品の摂取を意識してみてください。気になる場合は医療機関での確認をお勧めします。`,
         actions: ['赤身牛肉', 'レバー', 'ほうれん草・あさり'],
       });
     } else {
       insights.push({
         icon: '🐟', color: 'amber',
-        title: '鉄の吸収率を高める工夫を',
-        message: `血液検査でフェリチン/鉄の低下が確認されています。タンパク質の摂取量は十分ですが、非ヘム鉄の吸収を高めるためビタミンCと一緒に摂ることが効果的です。`,
+        title: '鉄関連指標：食事の工夫が参考になります',
+        message: `フェリチン/鉄関連の指標に着目が必要です。タンパク質の摂取量は十分ですが、非ヘム鉄の吸収にはビタミンCとの同時摂取が参考になります。気になる場合は医療機関での確認をお勧めします。`,
         actions: ['赤身肉（ヘム鉄）', 'ほうれん草＋レモン', '豆腐・豆類'],
       });
     }
@@ -97,8 +97,8 @@ function calcInsights(markers: Marker[], logs: DailyFoodLog[], userProfile: any)
   if (isLow('ビタミンD') || isLow('Vitamin D')) {
     insights.push({
       icon: '☀️', color: 'amber',
-      title: 'ビタミンD不足を食事で補う',
-      message: `血液検査でビタミンDの低下が確認されています。日照不足と合わせて、ビタミンDを含む食品を毎日意識的に摂りましょう。`,
+      title: 'ビタミンD関連指標：食事での工夫が参考になります',
+      message: `ビタミンD関連の指標に着目が必要です。日照や食事からのビタミンD摂取を意識してみてください。気になる場合は医療機関での確認をお勧めします。`,
       actions: ['鮭・サバ・イワシ', 'きのこ類（干しシイタケ）', '卵（特に卵黄）'],
     });
   }
@@ -108,8 +108,8 @@ function calcInsights(markers: Marker[], logs: DailyFoodLog[], userProfile: any)
     if (avgCarbsPct > 120) {
       insights.push({
         icon: '🍚', color: 'red',
-        title: '糖質過多の傾向あり',
-        message: `過去${daysRecorded}日の炭水化物平均達成率は${Math.round(avgCarbsPct)}%です。糖質の過多が中性脂肪値を上昇させている可能性があります。炭水化物を約${Math.round(avgCarbsPct - 100)}%削減することを目指しましょう。`,
+        title: '糖質摂取量：要確認',
+        message: `過去${daysRecorded}日の炭水化物平均達成率は${Math.round(avgCarbsPct)}%です。中性脂肪関連指標に注意が必要です。炭水化物の量を意識してみてください。気になる場合は医療機関での確認をお勧めします。`,
         actions: ['白米→玄米・雑穀米に変更', '菓子・甘い飲料を控える', '野菜・海藻から食べる'],
       });
     }
@@ -120,8 +120,8 @@ function calcInsights(markers: Marker[], logs: DailyFoodLog[], userProfile: any)
     if (avgFatPct > 120) {
       insights.push({
         icon: '🫀', color: 'red',
-        title: '脂質の摂取過多の傾向あり',
-        message: `過去${daysRecorded}日の脂質平均達成率は${Math.round(avgFatPct)}%です。飽和脂肪酸の過多がLDLコレステロール上昇に関与している可能性があります。`,
+        title: '脂質摂取量：要確認',
+        message: `過去${daysRecorded}日の脂質平均達成率は${Math.round(avgFatPct)}%です。LDLコレステロール関連指標に注意が必要です。脂質の量を意識してみてください。気になる場合は医療機関での確認をお勧めします。`,
         actions: ['揚げ物を週2回以下に', '肉の脂身・バターを控える', 'オリーブオイル・魚油に置き換える'],
       });
     }
@@ -132,8 +132,8 @@ function calcInsights(markers: Marker[], logs: DailyFoodLog[], userProfile: any)
     if (avgProteinPct < 80) {
       insights.push({
         icon: '🥜', color: 'teal',
-        title: 'ミネラル補給にタンパク質源を増やす',
-        message: `過去${daysRecorded}日のタンパク質平均達成率は${Math.round(avgProteinPct)}%です。タンパク質を含む食品を増やすと亜鉛・マグネシウムの改善が期待できます。`,
+        title: 'ミネラル関連指標：食事の工夫が参考になります',
+        message: `過去${daysRecorded}日のタンパク質平均達成率は${Math.round(avgProteinPct)}%です。タンパク質を含む食品を意識すると、亜鉛・マグネシウムの摂取にも寄与が期待できます。`,
         actions: ['牡蠣・牛赤身肉', 'ナッツ類（アーモンド・カシューナッツ）', '豆腐・枝豆・レンズ豆'],
       });
     }
@@ -193,8 +193,7 @@ export default function Analysis() {
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.05 }} className="elevated-card rounded-xl p-3.5 mb-6 flex items-start gap-3">
           <Info className="w-4 h-4 text-teal mt-0.5 shrink-0" />
           <p className="text-[11px] text-muted-foreground leading-relaxed">
-            以下の解析結果は、AIによる解析に基づく<span className="font-medium text-foreground">健康増進・パフォーマンス最適化</span>を目的としたものです。
-            医療上の診断・処方ではありません。持病がある場合は必ず医療機関にご相談ください。
+            ※ 本アプリは医療機器ではありません。表示される情報は生活習慣改善の参考を目的としており、医学的診断・治療を提供するものではありません。数値に気になる点がある場合は、医療機関にご相談ください。
           </p>
         </motion.div>
 
@@ -221,8 +220,8 @@ export default function Analysis() {
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }} className="grid grid-cols-3 gap-3 mb-6">
               {[
                 { label: "正常",   count: okCount,         colorClass: "text-teal" },
-                { label: "要注意", count: borderlineCount, colorClass: "text-amber" },
-                { label: "不足",   count: lowCount,        colorClass: "text-destructive" },
+                { label: "要確認", count: borderlineCount, colorClass: "text-amber" },
+                { label: "着目",   count: lowCount,        colorClass: "text-destructive" },
               ].map(({ label, count, colorClass }) => (
                 <div key={label} className="elevated-card rounded-xl p-4 text-center">
                   <p className={`text-2xl font-bold ${colorClass}`}>{count}</p>

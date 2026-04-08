@@ -97,7 +97,7 @@ export default function Sidebar() {
         {/* Footer disclaimer */}
         <div className={`p-3 lg:p-4 mx-2 lg:mx-3 mb-3 rounded-xl bg-secondary/40 ${mobileOpen ? "block" : "hidden"} lg:block`}>
           <p className="text-[10px] text-muted-foreground leading-relaxed">
-            本サービスは医療行為ではありません。健康増進・パフォーマンス最適化を目的としています。
+            本アプリは医療機器ではありません。生活習慣改善の参考情報を提供するウェルネスツールです。
           </p>
         </div>
       </aside>

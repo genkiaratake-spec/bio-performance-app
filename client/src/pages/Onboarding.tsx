@@ -789,6 +789,7 @@ export default function Onboarding() {
             { icon: '📱', title: 'データはデバイスに保存', desc: '健康診断データ・プロフィールはお使いのデバイス内のみに保存され、外部サーバーには送信されません。' },
             { icon: '🤖', title: 'AI解析の際の送信', desc: '食事写真・健康診断PDFをAI解析する際のみ、Anthropic社のAPIに送信されます。データは解析後に削除されます。' },
             { icon: '🚫', title: '第三者への提供なし', desc: 'あなたの個人情報・健康データを第三者に販売・提供することはありません。' },
+            { icon: '⚕️', title: '医療機器ではありません', desc: '本アプリは生活習慣改善の参考情報を提供するウェルネスツールです。医学的診断・治療を提供するものではありません。数値に気になる点がある場合は、医療機関にご相談ください。' },
           ].map(item => (
             <div key={item.title} className="bg-[#111118] border border-white/5 rounded-xl p-4">
               <div className="flex items-start gap-3">

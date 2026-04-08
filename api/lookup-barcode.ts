@@ -87,7 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const claudeRes = await client.messages.create({
       model: 'claude-haiku-4-5',
       max_tokens: 300,
-      system: '食品の栄養情報と血液検査結果を照合して、2〜3文の簡潔な日本語アドバイスを返してください。血液検査データがない場合は一般的な栄養コメントを返してください。アドバイスのみ返し、余計な前置きは不要です。',
+      system: '食品の栄養情報と血液検査結果を照合して、2〜3文の簡潔な日本語コメントを返してください。血液検査データがない場合は一般的な栄養コメントを返してください。コメントのみ返し、余計な前置きは不要です。注意：病名・疾患名の断定（「貧血です」等）や「改善します」「治ります」等の断定表現は禁止。「〜が期待できます」「参考情報として」等の限定表現を使ってください。',
       messages: [{ role: 'user', content: userMessage }],
     });
 

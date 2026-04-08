@@ -182,7 +182,7 @@ export default function Supplements() {
 
       {/* Disclaimer */}
       <p className="text-xs text-gray-500 text-center leading-relaxed">
-        サプリメントの提案はAIによる解析に基づくものであり、医薬品の処方ではありません。服用中の薬がある場合は、必ず医師にご相談ください。
+        ※ 本アプリは医療機器ではありません。サプリメントの提案は生活習慣改善の参考情報であり、医学的診断・治療を提供するものではありません。※ 個人の状態により効果は異なります。医療機関への相談もご検討ください。
       </p>
     </div>
   );

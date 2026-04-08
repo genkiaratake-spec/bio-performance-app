@@ -142,7 +142,7 @@ function StatusBadge({ status }: { status: string }) {
   }
   return (
     <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber/10 text-amber font-semibold flex items-center gap-0.5">
-      <AlertCircle className="w-2.5 h-2.5" /> 要注意
+      <AlertCircle className="w-2.5 h-2.5" /> 要確認
     </span>
   );
 }
@@ -303,7 +303,7 @@ export default function Dashboard() {
               {[
                 { href: "/food-scanner", icon: ScanLine, label: "フードスキャナー", desc: "食事を撮影", color: "text-amber" },
                 { href: "/food-log", icon: BookOpen, label: "食事ログ", desc: "食事の記録を見る", color: "text-teal" },
-                { href: "/supplements", icon: Pill, label: "サプリメント", desc: "不足栄養素を補う", color: "text-amber" },
+                { href: "/supplements", icon: Pill, label: "サプリメント", desc: "栄養補給の参考に", color: "text-amber" },
               ].map((action) => (
                 <Link key={action.href} href={action.href}>
                   <div className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-secondary/60 transition-colors group">

@@ -24,7 +24,7 @@ export const SUPPLEMENTS: Supplement[] = [
     timing: "食事と一緒に",
     priority: "high",
     reason:
-      "ビタミンD3（5,000 IU）＋K1・K2（MK-4・MK-7）を1カプセルで補給。骨密度・免疫機能・血管健康を総合サポート。K2がカルシウムを骨へ適切に誘導し、動脈への沈着を防ぐ。",
+      "ビタミンD3（5,000 IU）＋K1・K2（MK-4・MK-7）を1カプセルで補給。一般的な栄養補給の選択肢として、骨・免疫・血管の健康維持が期待できます。",
     biomarker: "ビタミンD",
     currentValue: "28 ng/mL",
     targetValue: "40-60 ng/mL",
@@ -38,7 +38,7 @@ export const SUPPLEMENTS: Supplement[] = [
     timing: "就寝前",
     priority: "high",
     reason:
-      "グリシン酸マグネシウム（高吸収型）。睡眠の質向上・筋弛緩・ストレス軽減・心臓・骨・神経機能をサポート。酸化マグネシウムと比べて吸収率が高く、胃腸への負担が少ない。",
+      "グリシン酸マグネシウム（高吸収型）。一般的な栄養補給の選択肢として、睡眠の質・筋弛緩・ストレス軽減への寄与が期待できます。酸化マグネシウムと比べて吸収率が高いとされています。",
     monthlyPrice: 2200,
     amazonUrl: `https://www.amazon.co.jp/s?k=Life+Extension+Magnesium+Glycinate&tag=${AMAZON_ASSOCIATE_ID}`,
   },
@@ -49,7 +49,7 @@ export const SUPPLEMENTS: Supplement[] = [
     timing: "食事と一緒に",
     priority: "medium",
     reason:
-      "EPA・DHAオメガ3脂肪酸＋セサミリグナン＋オリーブポリフェノール配合。心臓・脳・炎症管理をサポート。南太平洋の海洋哺乳類に配慮した漁業から採取したワイルドキャッチ。",
+      "EPA・DHAオメガ3脂肪酸＋セサミリグナン＋オリーブポリフェノール配合。一般的な栄養補給の選択肢として、心臓・脳の健康維持への寄与が期待できます。",
     biomarker: "CRP",
     currentValue: "0.3 mg/L",
     targetValue: "< 0.5 mg/L（維持）",
@@ -63,7 +63,7 @@ export const SUPPLEMENTS: Supplement[] = [
     timing: "朝食後",
     priority: "medium",
     reason:
-      "8種類のビタミンBを活性型（バイオアクティブ）フォームで配合。エネルギー代謝・心臓・脳・神経機能をサポート。メチルコバラミン（B12）・5-MTHF（葉酸）など吸収率の高い形態を使用。",
+      "8種類のビタミンBを活性型（バイオアクティブ）フォームで配合。一般的な栄養補給の選択肢として、エネルギー代謝・神経機能の維持への寄与が期待できます。",
     monthlyPrice: 1800,
     amazonUrl: `https://www.amazon.co.jp/s?k=Life+Extension+BioActive+B-Complex&tag=${AMAZON_ASSOCIATE_ID}`,
   },

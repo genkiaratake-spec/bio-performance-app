@@ -513,7 +513,7 @@ function StepResults({ result, onReset }: { result: AnalysisResult; onReset: () 
       )}
 
       <p style={{ fontSize: 11, color: "#444", textAlign: "center", marginTop: 8, marginBottom: 4 }}>
-        ※ AIによる解析結果です。医療上の診断ではありません。
+        ※ 本アプリは医療機器ではありません。表示される情報は生活習慣改善の参考を目的としており、医学的診断・治療を提供するものではありません。数値に気になる点がある場合は、医療機関にご相談ください。
       </p>
     </motion.div>
   );
