@@ -36,19 +36,66 @@ function parseForm(req: VercelRequest): Promise<{ buffer: Buffer; mimeType: stri
   });
 }
 
+// Map known keys from extractedBiomarkers to flat HealthCheckData fields
+const KEY_MAP: Record<string, string> = {
+  hba1c: 'hba1c',
+  ldl: 'ldlCholesterol', ldlCholesterol: 'ldlCholesterol',
+  hdl: 'hdlCholesterol', hdlCholesterol: 'hdlCholesterol',
+  triglycerides: 'triglycerides', tg: 'triglycerides',
+  bloodSugar: 'bloodSugar', fbg: 'bloodSugar',
+  ast: 'got', got: 'got',
+  alt: 'gpt', gpt: 'gpt',
+  gammaGtp: 'gammaGtp', ggt: 'gammaGtp',
+  hsCrp: 'hsCrp',
+  crp: 'crp',
+  vitaminD: 'vitaminD',
+  ferritin: 'ferritin',
+  hemoglobin: 'hemoglobin', hgb: 'hemoglobin',
+  hematocrit: 'hematocrit',
+  wbc: 'wbc',
+  rbc: 'rbc',
+  plt: 'plt', platelets: 'plt',
+  uricAcid: 'uricAcid',
+  creatinine: 'creatinine',
+  egfr: 'egfr',
+  bun: 'bun',
+  totalProtein: 'totalProtein',
+  albumin: 'albumin',
+  totalCholesterol: 'totalCholesterol',
+  tsh: 'tsh',
+  ft3: 'ft3',
+  ft4: 'ft4',
+  bmi: 'bmi',
+  systolicBp: 'bloodPressureSystolic',
+  diastolicBp: 'bloodPressureDiastolic',
+  waistCircumference: 'waistCircumference',
+  weight: 'weight',
+  height: 'height',
+  vitaminB12: 'vitaminB12',
+  folate: 'folate',
+  homocysteine: 'homocysteine',
+  zinc: 'zinc',
+  omega3Index: 'omega3Index',
+  tpoAntibody: 'tpoAntibody',
+  cortisol: 'cortisol',
+  testosterone: 'testosterone',
+  homaIr: 'homaIr',
+  apoB: 'apoB',
+  lipoproteinA: 'lipoproteinA',
+  calcium: 'calcium',
+  dheas: 'dheas',
+  lh: 'lh',
+  fsh: 'fsh',
+  estradiol: 'estradiol',
+};
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // CORS headers for Capacitor iOS app
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
     const { buffer, mimeType } = await parseForm(req);
@@ -58,8 +105,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     const base64Data = buffer.toString('base64');
 
-    // MIMEタイプの正規化
-    // iPhoneのSafariはPDFをoctet-streamで送ることがある
     let normalizedMimeType = mimeType;
     if (
       mimeType === 'application/octet-stream' ||
@@ -71,89 +116,94 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const isImage = normalizedMimeType.startsWith('image/');
-
     const contentItem = isImage
       ? {
           type: 'image' as const,
-          source: {
-            type: 'base64' as const,
-            media_type: normalizedMimeType as 'image/jpeg' | 'image/png',
-            data: base64Data,
-          },
+          source: { type: 'base64' as const, media_type: normalizedMimeType as 'image/jpeg' | 'image/png', data: base64Data },
         }
       : {
           type: 'document' as const,
-          source: {
-            type: 'base64' as const,
-            media_type: 'application/pdf' as const,
-            data: base64Data,
-          },
+          source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: base64Data },
         };
 
     const message = await client.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      max_tokens: 4000,
       messages: [{
         role: 'user',
         content: [
           contentItem,
           {
             type: 'text',
-            text: `あなたはJSONのみを返すAPIです。説明文・前置き・コードブロック記号(\`\`\`)は一切含めず、必ずJSONオブジェクト { } のみで応答してください。
+            text: `あなたは健康診断・血液検査レポートを読み取る専門AIです。
+添付ファイルから検査値をすべて抽出し、以下の形式のJSONのみを返してください。
+説明文・コードブロック・マークダウン記号は不要です。
 
-この健康診断結果から以下の項目を抽出してください。
-項目が存在しない場合はnullにしてください。
-必ずJSON形式のみで返答し、前後の説明文は不要です。
+抽出ルール：
+1. ファイルに含まれる全ての検査項目を抽出する（事前定義の項目に限定しない）
+2. 各項目を以下の形式で返す
+3. 値が読み取れない項目はnullとする
+4. 単位変換が必要な場合は変換して返す
 
+単位変換ルール：
+- 25(OH)D: nmol/L → ng/mL の場合は ÷2.496
+- B12: pmol/L → pg/mL の場合は ×1.355
+- CRP: mg/dL → mg/L の場合は ×10
+- ホモシステイン: mg/L → µmol/L の場合は ×7.4
+- HbA1c: mmol/mol(IFCC) → % の場合は (値×0.0915)+2.15
+
+返却形式：
 {
-  "checkupDate": "検診日（YYYY-MM-DD形式）",
-  "age": 年齢（数値）,
-  "gender": "性別（male/female）",
-  "height": 身長cm（数値）,
-  "weight": 体重kg（数値）,
-  "bmi": BMI（数値）,
-  "bloodPressureSystolic": 収縮期血圧（数値）,
-  "bloodPressureDiastolic": 拡張期血圧（数値）,
-  "totalCholesterol": 総コレステロール（数値）,
-  "ldlCholesterol": LDLコレステロール（数値）,
-  "hdlCholesterol": HDLコレステロール（数値）,
-  "triglycerides": 中性脂肪（数値）,
-  "bloodSugar": 血糖値（数値）,
-  "hba1c": HbA1c（数値）,
-  "uricAcid": 尿酸（数値）,
-  "got": GOT/AST（数値）,
-  "gpt": GPT/ALT（数値）,
-  "gammaGtp": γ-GTP（数値）,
-  "hemoglobin": ヘモグロビン（数値）,
-  "vitaminD": ビタミンD ng/mL（数値、あれば。nmol/Lの場合は÷2.496で変換）,
-  "ferritin": フェリチン ng/mL（数値、あれば）,
-  "crp": CRP mg/dL（数値、あれば）,
-  "vitaminB12": ビタミンB12 pg/mL（数値、あれば。pmol/Lの場合は×1.355で変換）,
-  "folate": 葉酸 ng/mL（数値、あれば）,
-  "homocysteine": ホモシステイン µmol/L（数値、あれば。mg/Lの場合は×7.4で変換）,
-  "zinc": 血清亜鉛 µg/dL（数値、あれば）,
-  "omega3Index": Omega-3 Index %（赤血球中EPA+DHA割合、数値、あれば）,
-  "tsh": TSH µIU/mL（数値、あれば）,
-  "ft3": 遊離T3 pg/mL（数値、あれば）,
-  "ft4": 遊離T4 ng/dL（数値、あれば）,
-  "tpoAntibody": TPOAb IU/mL（数値、あれば）,
-  "cortisol": コルチゾール µg/dL（朝、数値、あれば）,
-  "testosterone": テストステロン ng/dL（数値、あれば）,
-  "homaIr": HOMA-IR（数値、あれば）,
-  "hsCrp": 高感度CRP mg/L（数値、あれば。mg/dLの場合は×10で変換。crpと重複する場合はhsCrpに統合）,
-  "apoB": ApoB（アポリポタンパクB）mg/dL（数値、あれば）,
-  "lipoproteinA": リポタンパク(a) mg/dL（数値、あれば。nmol/Lの場合は÷2.5で変換）,
-  "hematocrit": ヘマトクリット %（数値、あれば）,
-  "rbc": 赤血球数 ×10⁶/µL（数値、あれば）,
-  "calcium": 血清カルシウム mg/dL（数値、あれば）,
-  "dheas": DHEA-S µg/dL（数値、あれば）,
-  "lh": LH（黄体形成ホルモン）mIU/mL（数値、あれば）,
-  "fsh": FSH（卵胞刺激ホルモン）mIU/mL（数値、あれば）,
-  "estradiol": エストラジオール pg/mL（数値、あれば）,
-  "abnormalFlags": ["基準値外の項目名のリスト"],
-  "doctorComment": "医師のコメント（あれば）",
-  "overallRating": "総合評価（A/B/C/D等）"
-}`
+  "extractedBiomarkers": [
+    {
+      "key": "snake_case_english_key",
+      "label": "検査項目名（日本語）",
+      "value": 数値またはnull,
+      "unit": "単位",
+      "referenceRange": "基準値（例：0-5.5）または null",
+      "isAbnormal": true/false/null
+    }
+  ],
+  "checkupDate": "YYYY-MM-DD または null",
+  "institutionName": "検査機関名 または null",
+  "overallRating": "総合判定（例：A・B・C1・C2・D）または null"
+}
+
+keyの命名規則（既存フィールドとの互換性のため以下に従う）：
+  HbA1c → "hba1c"
+  LDL → "ldlCholesterol"
+  HDL → "hdlCholesterol"
+  中性脂肪・TG → "triglycerides"
+  血糖値・グルコース → "bloodSugar"
+  AST・GOT → "ast"
+  ALT・GPT → "alt"
+  γGTP・γ-GT → "gammaGtp"
+  hs-CRP・高感度CRP → "hsCrp"
+  CRP（通常感度）→ "crp"
+  ビタミンD・25(OH)D → "vitaminD"
+  フェリチン → "ferritin"
+  ヘモグロビン → "hemoglobin"
+  ヘマトクリット → "hematocrit"
+  白血球 → "wbc"
+  赤血球 → "rbc"
+  血小板 → "platelets"
+  尿酸 → "uricAcid"
+  クレアチニン → "creatinine"
+  eGFR → "egfr"
+  BUN・尿素窒素 → "bun"
+  総タンパク → "totalProtein"
+  アルブミン → "albumin"
+  総コレステロール → "totalCholesterol"
+  TSH → "tsh"
+  FT3 → "ft3"
+  FT4 → "ft4"
+  BMI → "bmi"
+  収縮期血圧 → "systolicBp"
+  拡張期血圧 → "diastolicBp"
+  腹囲 → "waistCircumference"
+  体重 → "weight"
+  身長 → "height"
+  上記以外の項目 → 日本語名をローマ字またはスネークケース英語に変換して命名`
           }
         ]
       }]
@@ -166,14 +216,45 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ success: false, error: 'AIの応答からJSONを取得できませんでした' });
     }
 
-    let healthData;
+    let parsed;
     try {
-      healthData = JSON.parse(jsonMatch[0]);
+      parsed = JSON.parse(jsonMatch[0]);
     } catch (parseErr) {
       console.error('JSON parse failed:', jsonMatch[0].substring(0, 200));
       return res.status(500).json({ success: false, error: 'レスポンスのJSON解析に失敗しました' });
     }
-    return res.status(200).json({ success: true, data: healthData });
+
+    const extractedBiomarkers: any[] = parsed.extractedBiomarkers || [];
+
+    // Build flat HealthCheckData object for backward compatibility
+    const flatData: Record<string, any> = {
+      checkupDate: parsed.checkupDate || null,
+      overallRating: parsed.overallRating || null,
+      institutionName: parsed.institutionName || null,
+      abnormalFlags: [] as string[],
+    };
+
+    const abnormals: string[] = [];
+
+    for (const bm of extractedBiomarkers) {
+      if (!bm.key || bm.value === null || bm.value === undefined) continue;
+
+      // Map to known flat field
+      const flatKey = KEY_MAP[bm.key] || bm.key;
+      if (!(flatKey in flatData)) {
+        flatData[flatKey] = bm.value;
+      }
+
+      if (bm.isAbnormal === true) {
+        abnormals.push(bm.label || bm.key);
+      }
+    }
+
+    flatData.abnormalFlags = abnormals;
+    flatData.allBiomarkers = extractedBiomarkers;
+    flatData.totalExtracted = extractedBiomarkers.filter((b: any) => b.value !== null).length;
+
+    return res.status(200).json({ success: true, data: flatData });
 
   } catch (error) {
     console.error('Health check analysis error:', error);

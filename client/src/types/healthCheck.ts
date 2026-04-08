@@ -48,6 +48,19 @@ export interface HealthCheckData {
   lh: number | null;
   fsh: number | null;
   estradiol: number | null;
+  // Open-ended extraction fields
+  allBiomarkers?: ExtractedBiomarker[];
+  totalExtracted?: number;
+  institutionName?: string | null;
+}
+
+export interface ExtractedBiomarker {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  referenceRange: string | null;
+  isAbnormal: boolean | null;
 }
 
 export type BiomarkerStatus = 'optimal' | 'sufficient' | 'out_of_range' | 'unavailable';

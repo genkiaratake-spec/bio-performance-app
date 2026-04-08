@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, ChevronRight, FileText, Upload, ArrowRight } from 'lucide-react';
-import { evaluateBiomarkers, getCategoryScore, getBarPosition, getBiomarkerRange, BIOMARKER_DEFS } from '../lib/biomarkerEvaluation';
+import { evaluateBiomarkers, getCategoryScore, getBarPosition, getBiomarkerRange, getBiomarkerStatus, BIOMARKER_DEFS } from '../lib/biomarkerEvaluation';
 import { getHealthHistory, compareLatestTwo } from '../lib/healthHistory';
-import type { BiomarkerEntry } from '../types/healthCheck';
+import type { BiomarkerEntry, ExtractedBiomarker } from '../types/healthCheck';
 import BiomarkerDetail from '../components/BiomarkerDetail';
 
 const API_BASE = typeof window !== 'undefined' && window.location.protocol === 'capacitor:'
@@ -244,8 +244,33 @@ export default function Analysis() {
   }, []);
 
   /* ---- Derived values ---- */
-  const entries = useMemo(() => {
+  const entries = useMemo((): BiomarkerEntry[] => {
     if (!healthData) return [];
+
+    // Use allBiomarkers if available (open-ended extraction)
+    const allBm: ExtractedBiomarker[] | undefined = (healthData as any).allBiomarkers;
+    if (allBm && allBm.length > 0) {
+      return allBm.map(bm => {
+        // Use existing evaluation for known keys
+        const knownStatus = getBiomarkerStatus(bm.key, bm.value);
+        let status = knownStatus;
+        if (status === 'unavailable' && bm.value !== null) {
+          // Fallback: use isAbnormal flag from extraction
+          status = bm.isAbnormal === true ? 'out_of_range' : bm.isAbnormal === false ? 'optimal' : 'unavailable';
+        }
+        return {
+          key: bm.key,
+          label: bm.label,
+          value: bm.value,
+          unit: bm.unit,
+          status,
+          category: 'nutrients' as const, // default category for display
+          optimalRange: bm.referenceRange || undefined,
+        };
+      });
+    }
+
+    // Fallback to predefined evaluation
     return evaluateBiomarkers(healthData);
   }, [healthData]);
 
