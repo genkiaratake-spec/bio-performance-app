@@ -709,19 +709,19 @@ export default function Home() {
             <div style={{ display: "flex", gap: 8, marginBottom: hasLogs ? 12 : 0 }}>
               <button
                 onClick={() => photoInputRef.current?.click()}
-                style={{ flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#4ade8018", border: "1px solid #4ade8040", color: "#4ade80", borderRadius: 10, padding: "9px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                style={{ flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#4ade8018", border: "1px solid #4ade8040", color: "#4ade80", borderRadius: 10, padding: "9px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
               >
                 <Camera style={{ width: 12, height: 12 }} />食事を撮影
               </button>
               <button
                 onClick={() => setShowScanner(true)}
-                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#60a5fa18", border: "1px solid #60a5fa40", color: "#60a5fa", borderRadius: 10, padding: "9px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#60a5fa18", border: "1px solid #60a5fa40", color: "#60a5fa", borderRadius: 10, padding: "9px 6px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
               >
                 <BarcodeIcon size={12} />バーコード
               </button>
               <button
                 onClick={() => setShowManualEntry(true)}
-                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#a78bfa18", border: "1px solid #a78bfa40", color: "#a78bfa", borderRadius: 10, padding: "9px 8px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, background: "#a78bfa18", border: "1px solid #a78bfa40", color: "#a78bfa", borderRadius: 10, padding: "9px 6px", fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
               >
                 ✏️手入力
               </button>

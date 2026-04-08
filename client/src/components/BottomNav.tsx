@@ -1,9 +1,8 @@
 import { Link, useLocation } from "wouter";
-import { Home, BarChart2, Upload, BookOpen, Pill } from "lucide-react";
+import { Home, BarChart2, BookOpen, Pill } from "lucide-react";
 
 const tabs = [
   { href: "/", icon: Home, label: "Home" },
-  { href: "/upload", icon: Upload, label: "Upload" },
   { href: "/analysis", icon: BarChart2, label: "Analysis" },
   { href: "/food-log", icon: BookOpen, label: "Log" },
   { href: "/supplements", icon: Pill, label: "Supplements" },

@@ -14,7 +14,7 @@ import Supplements from "./pages/Supplements";
 import FoodScanner from "./pages/FoodScanner";
 import Onboarding from "./pages/Onboarding";
 
-const BOTTOM_NAV_ROUTES = ["/", "/analysis", "/upload", "/food-log", "/supplements"];
+const BOTTOM_NAV_ROUTES = ["/", "/analysis", "/food-log", "/supplements"];
 
 function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
