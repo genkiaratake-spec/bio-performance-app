@@ -38,4 +38,63 @@ export interface HealthCheckData {
   testosterone: number | null;
   homaIr: number | null;
   hsCrp: number | null;
+  // Additional biomarkers
+  apoB: number | null;
+  lipoproteinA: number | null;
+  hematocrit: number | null;
+  rbc: number | null;
+  calcium: number | null;
+  dheas: number | null;
+  lh: number | null;
+  fsh: number | null;
+  estradiol: number | null;
+}
+
+export type BiomarkerStatus = 'optimal' | 'sufficient' | 'out_of_range' | 'unavailable';
+
+export type HealthCategory =
+  | 'metabolism'
+  | 'heart'
+  | 'hormones'
+  | 'inflammation'
+  | 'nutrients'
+  | 'fitness'
+  | 'cognition';
+
+export interface BiomarkerEntry {
+  key: string;
+  label: string;
+  value: number | null;
+  unit: string;
+  status: BiomarkerStatus;
+  category: HealthCategory;
+  optimalRange?: string;
+}
+
+export const CATEGORY_LABELS: Record<HealthCategory, string> = {
+  metabolism: '代謝',
+  heart: '心臓・血管',
+  hormones: 'ホルモン',
+  inflammation: '炎症',
+  nutrients: '栄養素',
+  fitness: 'フィットネス',
+  cognition: '認知パフォーマンス',
+};
+
+export interface HealthCheckHistory {
+  id: string;
+  uploadedAt: string;
+  data: HealthCheckData;
+  label?: string;
+}
+
+export type TestPlan = '1' | '2' | '4' | '6';
+
+export interface ClinicBooking {
+  id: string;
+  clinicName: string;
+  date: string;
+  time: string;
+  plan: TestPlan;
+  status: 'scheduled' | 'completed' | 'cancelled';
 }

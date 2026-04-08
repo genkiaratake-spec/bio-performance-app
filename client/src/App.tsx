@@ -13,8 +13,10 @@ import FoodLog from "./pages/FoodLog";
 import Supplements from "./pages/Supplements";
 import FoodScanner from "./pages/FoodScanner";
 import Onboarding from "./pages/Onboarding";
+import HealthHistory from "./pages/HealthHistory";
+import ClinicTest from "./pages/ClinicTest";
 
-const BOTTOM_NAV_ROUTES = ["/", "/analysis", "/food-log", "/supplements"];
+const BOTTOM_NAV_ROUTES = ["/", "/analysis", "/clinic", "/supplements", "/history"];
 
 function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
@@ -51,6 +53,8 @@ function Router() {
         <Route path="/food-log" component={FoodLog} />
         <Route path="/supplements" component={Supplements} />
         <Route path="/food-scanner" component={FoodScanner} />
+        <Route path="/history" component={HealthHistory} />
+        <Route path="/clinic" component={ClinicTest} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

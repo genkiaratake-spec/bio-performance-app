@@ -3,8 +3,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Info, TrendingUp, Upload as UploadIcon, CheckCircle2, ChevronDown, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { getRecentDailyLogs, DailyFoodLog } from "../utils/mealLog";
+import { evaluateBiomarkers, groupByCategory, getCategoryScore } from '../lib/biomarkerEvaluation';
+import { getHighPriorityTests } from '../lib/additionalTestRecommendations';
+import { saveHealthCheck, compareLatestTwo, getHealthHistory } from '../lib/healthHistory';
+import { CATEGORY_LABELS } from '../types/healthCheck';
+import type { HealthCheckData, HealthCategory, BiomarkerEntry } from '../types/healthCheck';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -42,7 +47,15 @@ const STATUS_CONFIG = {
 
 const BLOOD_TEST_KEY = "bloodTestResults";
 const HISTORY_KEY    = "healthCheckHistory";
+const HEALTH_CHECK_KEY = "healthCheckData";
 const INSIGHT_DAYS   = 30;
+
+const STATUS_COLORS: Record<string, string> = {
+  optimal: '#1D9E75',
+  sufficient: '#185FA5',
+  out_of_range: '#E24B4A',
+  unavailable: '#666',
+};
 
 const API_BASE = typeof window !== "undefined" && window.location.protocol === "capacitor:"
   ? "https://bio-performance-app.vercel.app" : "";
@@ -575,6 +588,21 @@ export default function Analysis() {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [daysRecorded, setDaysRecorded] = useState(0);
   const [showReUpload, setShowReUpload] = useState(false);
+  const [expandedCats, setExpandedCats] = useState<Record<string, boolean>>({});
+
+  // HealthCheckData biomarker evaluation
+  const hcData = useMemo<HealthCheckData | null>(() => {
+    try {
+      const raw = localStorage.getItem(HEALTH_CHECK_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }, [hasData]);
+
+  const bioEntries = useMemo(() => hcData ? evaluateBiomarkers(hcData) : [], [hcData]);
+  const bioGrouped = useMemo(() => groupByCategory(bioEntries), [bioEntries]);
+  const bioScore = useMemo(() => getCategoryScore(bioEntries), [bioEntries]);
+  const comparison = useMemo(() => compareLatestTwo(), [hcData]);
+  const highPriMissing = useMemo(() => hcData ? getHighPriorityTests(hcData) : [], [hcData]);
 
   const loadData = useCallback(() => {
     try {
@@ -679,6 +707,149 @@ export default function Analysis() {
                 </div>
               ))}
             </motion.div>
+
+            {/* ── Biomarker Evaluation Sections (from healthCheckData) ── */}
+            {hcData && bioEntries.length > 0 && (
+              <>
+                {/* Section 1: Overview Summary */}
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.07 }} className="grid grid-cols-4 gap-2 mb-5">
+                  <div className="elevated-card rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold text-foreground">{bioScore.measured}<span className="text-xs text-muted-foreground">/{bioScore.total}</span></p>
+                    <p className="text-[10px] text-muted-foreground">測定項目</p>
+                  </div>
+                  <div className="elevated-card rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold" style={{ color: '#1D9E75' }}>{bioScore.optimal}</p>
+                    <p className="text-[10px] text-muted-foreground">至適域</p>
+                  </div>
+                  <div className="elevated-card rounded-xl p-3 text-center">
+                    <p className="text-lg font-bold" style={{ color: '#E24B4A' }}>{bioScore.outOfRange}</p>
+                    <p className="text-[10px] text-muted-foreground">要注意</p>
+                  </div>
+                  <div className="elevated-card rounded-xl p-3 text-center">
+                    <p className="text-sm font-bold text-foreground">{comparison ? `改善 +${Object.values(comparison.changes).filter(c => c.delta !== null && c.delta < 0).length}` : '初回測定'}</p>
+                    <p className="text-[10px] text-muted-foreground">前回比</p>
+                  </div>
+                </motion.div>
+
+                {/* Section 2: Category Summary Grid */}
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-5">
+                  {(Object.keys(CATEGORY_LABELS) as HealthCategory[]).map(cat => {
+                    const entries = bioGrouped[cat] || [];
+                    if (entries.length === 0) return null;
+                    const score = getCategoryScore(entries);
+                    const hasBad = score.outOfRange > 0;
+                    const pct = score.measured > 0 ? Math.round((score.optimal / score.measured) * 100) : 0;
+                    return (
+                      <div key={cat} className="elevated-card rounded-xl p-3" style={hasBad ? { borderColor: '#E24B4A30' } : undefined}>
+                        <p className="text-[10px] font-semibold text-muted-foreground mb-1.5">{CATEGORY_LABELS[cat]}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                          <div style={{ flex: 1, height: 4, borderRadius: 2, background: '#1a1a28', overflow: 'hidden', display: 'flex' }}>
+                            {score.optimal > 0 && <div style={{ flex: score.optimal, background: '#1D9E75' }} />}
+                            {score.sufficient > 0 && <div style={{ flex: score.sufficient, background: '#185FA5' }} />}
+                            {score.outOfRange > 0 && <div style={{ flex: score.outOfRange, background: '#E24B4A' }} />}
+                          </div>
+                          <span className="text-[10px] text-muted-foreground">{pct}%</span>
+                        </div>
+                        <span className="text-[10px]">{hasBad ? '⚠️' : score.optimal === score.measured ? '✅' : ''}</span>
+                      </div>
+                    );
+                  })}
+                </motion.div>
+
+                {/* Section 3: Category Detail Lists */}
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.09 }} className="elevated-card rounded-xl p-5 mb-5">
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-4">バイオマーカー詳細</p>
+                  {(Object.keys(CATEGORY_LABELS) as HealthCategory[]).map(cat => {
+                    const entries = bioGrouped[cat] || [];
+                    if (entries.length === 0) return null;
+                    const isExpanded = expandedCats[cat] !== false;
+                    return (
+                      <div key={cat} className="mb-3">
+                        <button onClick={() => setExpandedCats(prev => ({ ...prev, [cat]: !isExpanded }))}
+                          className="w-full flex items-center justify-between py-1.5 text-left">
+                          <span className="text-xs font-bold text-foreground">{CATEGORY_LABELS[cat]}</span>
+                          <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isExpanded && (
+                          <div className="mt-1 space-y-0">
+                            {entries.map((e, i) => (
+                              <div key={`${cat}-${e.key}-${i}`} className="flex items-center justify-between py-2 border-b border-border/20 last:border-0"
+                                style={e.status === 'unavailable' ? { opacity: 0.4 } : undefined}>
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: STATUS_COLORS[e.status], flexShrink: 0 }} />
+                                  <span className="text-xs text-foreground">{e.label}</span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <span className="text-xs font-bold text-foreground">
+                                    {e.value !== null ? e.value : '—'}{e.value !== null && <span className="text-[9px] text-muted-foreground ml-0.5">{e.unit}</span>}
+                                  </span>
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full font-semibold" style={{
+                                    color: STATUS_COLORS[e.status], background: `${STATUS_COLORS[e.status]}18`,
+                                  }}>
+                                    {e.status === 'optimal' ? '至適' : e.status === 'sufficient' ? '充足' : e.status === 'out_of_range' ? '要注意' : '未測定'}
+                                  </span>
+                                  {e.optimalRange && <span className="text-[9px] text-muted-foreground hidden sm:inline">{e.optimalRange}</span>}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </motion.div>
+
+                {/* Section 4: Previous Comparison */}
+                {comparison && Object.keys(comparison.changes).length > 0 && (
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="elevated-card rounded-xl p-5 mb-5">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">前回との比較</p>
+                    <div className="space-y-1.5">
+                      {Object.entries(comparison.changes).slice(0, 10).map(([key, ch]) => {
+                        const def = bioEntries.find(e => e.key === key);
+                        const improved = ch.delta !== null && ch.delta < 0;
+                        return (
+                          <div key={key} className="flex items-center justify-between py-1.5 text-xs">
+                            <span className="text-foreground">{def?.label || key}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-muted-foreground">{ch.previous}</span>
+                              <span className="text-muted-foreground">→</span>
+                              <span className="font-bold text-foreground">{ch.current}</span>
+                              <span style={{ color: improved ? '#1D9E75' : '#E24B4A', fontWeight: 600 }}>
+                                {improved ? '▲' : '▼'} {Math.abs(ch.delta!)}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Section 5: Test Completeness */}
+                {highPriMissing.length > 0 && (
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.11 }} className="elevated-card rounded-xl p-5 mb-5">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest mb-3">検査の充足度</p>
+                    <div className="mb-3">
+                      <div style={{ height: 6, borderRadius: 3, background: '#1a1a28', overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.round((bioScore.measured / (bioScore.measured + highPriMissing.length)) * 100)}%`, height: '100%', background: '#1D9E75', borderRadius: 3 }} />
+                      </div>
+                      <p className="text-[10px] text-muted-foreground mt-1.5">{bioScore.measured} / {bioScore.measured + highPriMissing.length} 項目測定済み</p>
+                    </div>
+                    <div className="space-y-2">
+                      {highPriMissing.slice(0, 5).map(t => (
+                        <div key={t.key} className="flex items-center justify-between py-1.5">
+                          <div>
+                            <p className="text-xs font-semibold text-foreground">{t.name}</p>
+                            <p className="text-[10px] text-muted-foreground">{t.approximateCost}</p>
+                          </div>
+                          <span className="text-[10px] text-amber font-semibold">追加測定を検討</span>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </>
+            )}
 
             {/* Overall assessment */}
             {data.overall_assessment && (
@@ -802,6 +973,27 @@ export default function Analysis() {
 
             {/* History section */}
             <HistorySection />
+
+            {/* Next test reminder */}
+            {(() => {
+              const history = getHealthHistory();
+              if (history.length > 0) {
+                const lastDate = new Date(history[0].uploadedAt);
+                const nextDate = new Date(lastDate);
+                nextDate.setMonth(nextDate.getMonth() + 3);
+                return (
+                  <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.42 }}
+                    className="elevated-card rounded-xl p-4 mb-6 border border-teal/20 bg-teal/5">
+                    <p className="text-xs font-semibold text-teal mb-1">次回推奨検査時期：{nextDate.getFullYear()}年{nextDate.getMonth() + 1}月頃</p>
+                    <p className="text-[11px] text-muted-foreground mb-3">定期的な検査で改善トレンドを追跡しましょう</p>
+                    <Button onClick={() => setShowReUpload(true)} size="sm" variant="outline" className="gap-1.5 text-xs">
+                      検査結果をアップロード
+                    </Button>
+                  </motion.div>
+                );
+              }
+              return null;
+            })()}
 
             {/* CTA */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-center">

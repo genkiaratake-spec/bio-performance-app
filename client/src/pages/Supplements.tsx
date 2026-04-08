@@ -1,7 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, AlertTriangle, CheckCircle2, RefreshCw, Info } from "lucide-react";
+import { evaluateBiomarkers, groupByCategory, getCategoryScore } from '../lib/biomarkerEvaluation';
+import { getHighPriorityTests } from '../lib/additionalTestRecommendations';
+import { CATEGORY_LABELS } from '../types/healthCheck';
+import type { HealthCategory } from '../types/healthCheck';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -324,6 +328,45 @@ export default function Supplements() {
 
   const highCount = data.recommendations.filter(r => r.priority === 'high').length;
 
+  // Category evaluation
+  const categoryData = useMemo(() => {
+    try {
+      const healthData = JSON.parse(localStorage.getItem(HEALTH_DATA_KEY) || '{}');
+      const entries = evaluateBiomarkers(healthData);
+      const grouped = groupByCategory(entries);
+      return grouped;
+    } catch { return null; }
+  }, []);
+
+  const highPriorityMissing = useMemo(() => {
+    try {
+      const healthData = JSON.parse(localStorage.getItem(HEALTH_DATA_KEY) || '{}');
+      return getHighPriorityTests(healthData);
+    } catch { return []; }
+  }, []);
+
+  // Supplement → category mapping
+  const SUPP_CATEGORIES: Record<string, HealthCategory[]> = {
+    'ビタミンD3 + K2': ['nutrients', 'inflammation', 'cognition'],
+    'ビタミンD3': ['nutrients', 'inflammation', 'cognition'],
+    'Omega-3（EPA+DHA）': ['heart', 'inflammation', 'cognition'],
+    'Omega-3（DHA優位）': ['heart', 'inflammation', 'cognition'],
+    '鉄（ビスグリシン酸鉄）': ['nutrients', 'fitness'],
+    'ビタミンB12（メチルコバラミン）': ['nutrients', 'cognition'],
+    'ビタミンB12検査': ['nutrients', 'cognition'],
+    '5-MTHF（活性型葉酸）+ メチルB12': ['nutrients', 'cognition'],
+    '葉酸 + B群複合（B6・B12）': ['nutrients', 'cognition'],
+    '亜鉛（グリシン酸亜鉛）': ['nutrients', 'hormones'],
+    'CoQ10（ユビキノール）': ['metabolism', 'fitness'],
+    'ベルベリン': ['metabolism', 'heart'],
+    'クルクミン + ピペリン': ['inflammation', 'heart'],
+    'アシュワガンダ（KSM-66）': ['hormones'],
+    'マグネシウム（グリシン酸Mg）': ['cognition'],
+    'クレアチンモノハイドレート': ['fitness', 'cognition'],
+    'セレン（セレノメチオニン）': ['hormones', 'inflammation'],
+    'NMN': ['metabolism', 'hormones'],
+  };
+
   return (
     <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
       {/* Header */}
@@ -352,6 +395,33 @@ export default function Supplements() {
           </div>
         ))}
       </div>
+
+      {/* Category dots */}
+      {categoryData && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          {(Object.keys(CATEGORY_LABELS) as HealthCategory[]).map(cat => {
+            const entries = categoryData[cat] || [];
+            const score = getCategoryScore(entries);
+            const dotColor = score.outOfRange > 0 ? '#E24B4A' : score.optimal > 0 ? '#1D9E75' : '#185FA5';
+            const isBad = score.outOfRange > 0;
+            return (
+              <button key={cat} onClick={() => navigate('/analysis')}
+                style={{ display: 'flex', alignItems: 'center', gap: 4, background: '#111118', border: '1px solid #222', borderRadius: 8, padding: '4px 10px', cursor: 'pointer' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, display: 'inline-block' }} />
+                <span style={{ fontSize: 10, color: isBad ? '#E24B4A' : '#888', fontWeight: isBad ? 700 : 500 }}>{CATEGORY_LABELS[cat]}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Unmeasured banner */}
+      {highPriorityMissing.length >= 3 && (
+        <div style={{ background: '#185FA510', border: '1px solid #185FA530', borderRadius: 12, padding: '12px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <p style={{ fontSize: 12, color: '#60a5fa' }}>{highPriorityMissing.length}項目を追加測定すると推奨精度が上がります</p>
+          <button onClick={() => navigate('/analysis')} style={{ fontSize: 11, color: '#60a5fa', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap' }}>確認する →</button>
+        </div>
+      )}
 
       {/* Drug alerts */}
       {data.drugAlerts.length > 0 && (
@@ -383,6 +453,11 @@ export default function Supplements() {
                 <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: gc.color, background: gc.bg }}>
                   Grade {rec.grade}
                 </span>
+                {(SUPP_CATEGORIES[rec.name] || []).map(cat => (
+                  <span key={cat} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 999, color: '#888', background: '#ffffff08', border: '1px solid #333' }}>
+                    {CATEGORY_LABELS[cat]}
+                  </span>
+                ))}
               </div>
 
               {/* Dose */}
