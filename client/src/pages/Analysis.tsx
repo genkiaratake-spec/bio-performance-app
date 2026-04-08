@@ -291,9 +291,9 @@ function UploadZone({ onComplete }: { onComplete: (data: BloodTestResults) => vo
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="elevated-card rounded-2xl p-8 flex flex-col items-center text-center">
       <div className="text-5xl mb-4">🔬</div>
-      <h2 className="text-xl font-bold mb-2">血液検査データが未登録です</h2>
+      <h2 className="text-xl font-bold mb-2">健康診断・血液検査データが未登録です</h2>
       <p className="text-sm text-muted-foreground mb-6 max-w-sm leading-relaxed">
-        血液検査結果をアップロードすると、AIがバイオマーカーを解析してこの画面に表示します。
+        健康診断・血液検査の結果をアップロードすると、AIがバイオマーカーを解析してこの画面に表示します。複数ページのPDFも読み取り可能です。
       </p>
 
       {error && (

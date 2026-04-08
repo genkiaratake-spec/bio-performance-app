@@ -1,189 +1,450 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
-import { motion } from "framer-motion";
-import { ExternalLink, ArrowRight } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowRight, AlertTriangle, CheckCircle2, RefreshCw, Info } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
-interface SupplementItem {
+interface Recommendation {
   name: string;
-  priority: "high" | "normal";
+  dose: string;
+  grade: 'A' | 'B' | 'C';
+  priority: 'high' | 'medium' | 'low' | 'caution';
   reason: string;
-  dosage: string;
-  timing: string;
-  monthly_cost: string;
+  trigger: string;
+  retestTiming: string;
+  warning: string;
 }
 
-interface BloodTestResults {
-  supplements: SupplementItem[];
-  overall_assessment?: string;
-  savedAt?: string;
+interface NotNeeded {
+  name: string;
+  reason: string;
+}
+
+interface SupplementData {
+  drugAlerts: string[];
+  recommendations: Recommendation[];
+  notNeeded: NotNeeded[];
+}
+
+interface Preferences {
+  medications: string[];
+  lifestyle: string[];
+  symptoms: string[];
 }
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
-const BLOOD_TEST_KEY = "bloodTestResults";
+const HEALTH_DATA_KEY = 'healthCheckData';
+const PREFS_KEY = 'supplementPreferences';
+const CACHE_KEY = 'supplementsData';
+
+const API_BASE = typeof window !== 'undefined' && window.location.protocol === 'capacitor:'
+  ? 'https://bio-performance-app.vercel.app' : '';
+
+const MEDICATION_OPTIONS = [
+  { value: 'statin', label: 'スタチン系' },
+  { value: 'metformin', label: 'メトホルミン' },
+  { value: 'ppi', label: 'PPI（胃薬）' },
+  { value: 'warfarin', label: 'ワーファリン' },
+  { value: 'thyroid', label: '甲状腺薬' },
+  { value: 'ace', label: 'ACE阻害薬' },
+  { value: 'diuretic', label: '利尿薬' },
+  { value: 'oc', label: '経口避妊薬' },
+  { value: 'steroid', label: 'ステロイド' },
+  { value: 'nsaid', label: 'NSAIDs' },
+];
+
+const LIFESTYLE_OPTIONS = [
+  { value: 'vegan', label: '菜食主義' },
+  { value: 'hightraining', label: '高強度トレーニング' },
+  { value: 'sleepbad', label: '慢性睡眠不足' },
+  { value: 'stress', label: '高ストレス' },
+  { value: 'hashimoto', label: '橋本病' },
+  { value: 'apoe4', label: 'APOE ε4保有' },
+  { value: 'mthfr', label: 'MTHFR変異あり' },
+  { value: 'over40', label: '40歳以上' },
+  { value: 'male', label: '男性' },
+  { value: 'pregnant', label: '妊娠中' },
+  { value: 'winter', label: '現在冬季（12–3月）' },
+];
+
+const SYMPTOM_OPTIONS = [
+  { value: 'fatigue', label: '慢性疲労' },
+  { value: 'musclepain', label: '筋肉痛・回復遅延' },
+  { value: 'sleepissue', label: '入眠困難' },
+  { value: 'anxstress', label: '不安・ストレス感' },
+  { value: 'brainfog', label: '集中力低下' },
+  { value: 'joint', label: '関節痛' },
+];
 
 const PRIORITY_CONFIG = {
-  high:   { label: "優先",  color: "#f97316", bg: "rgba(249,115,22,0.12)", border: "rgba(249,115,22,0.3)" },
-  normal: { label: "通常",  color: "#6b7280", bg: "rgba(107,114,128,0.10)", border: "rgba(107,114,128,0.2)" },
+  high:    { label: '高優先', color: '#ef4444', bg: '#ef444415', border: '#ef444440' },
+  medium:  { label: '中優先', color: '#f97316', bg: '#f9731615', border: '#f9731640' },
+  low:     { label: '低優先', color: '#4ade80', bg: '#4ade8015', border: '#4ade8040' },
+  caution: { label: '慎重',   color: '#6b7280', bg: '#6b728015', border: '#6b728040' },
 };
+
+const GRADE_CONFIG = {
+  A: { color: '#4ade80', bg: '#4ade8018' },
+  B: { color: '#60a5fa', bg: '#60a5fa18' },
+  C: { color: '#6b7280', bg: '#6b728018' },
+};
+
+/* ------------------------------------------------------------------ */
+/*  Chip selector                                                      */
+/* ------------------------------------------------------------------ */
+function ChipSelector({ options, selected, onChange }: {
+  options: { value: string; label: string }[];
+  selected: string[];
+  onChange: (val: string[]) => void;
+}) {
+  const toggle = (val: string) => {
+    onChange(selected.includes(val) ? selected.filter(v => v !== val) : [...selected, val]);
+  };
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+      {options.map(opt => {
+        const active = selected.includes(opt.value);
+        return (
+          <button key={opt.value} onClick={() => toggle(opt.value)} style={{
+            padding: '6px 12px', borderRadius: 999, fontSize: 11, fontWeight: 600,
+            background: active ? '#4ade8018' : '#1a1a28',
+            border: `1px solid ${active ? '#4ade80' : '#2a2a38'}`,
+            color: active ? '#4ade80' : '#777', cursor: 'pointer', transition: 'all 0.15s',
+          }}>
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 /* ------------------------------------------------------------------ */
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
 export default function Supplements() {
   const [, navigate] = useLocation();
-  const [data, setData] = useState<BloodTestResults | null>(null);
-  const [hasData, setHasData] = useState<boolean | null>(null);
+  const [hasHealthData, setHasHealthData] = useState<boolean | null>(null);
+  const [prefs, setPrefs] = useState<Preferences | null>(null);
+  const [data, setData] = useState<SupplementData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
+  // Temp state for preference selection
+  const [tempMeds, setTempMeds] = useState<string[]>([]);
+  const [tempLife, setTempLife] = useState<string[]>([]);
+  const [tempSymp, setTempSymp] = useState<string[]>([]);
+
+  // Initialize
   useEffect(() => {
+    const healthRaw = localStorage.getItem(HEALTH_DATA_KEY);
+    if (!healthRaw) { setHasHealthData(false); return; }
     try {
-      const raw = localStorage.getItem(BLOOD_TEST_KEY);
-      if (!raw) { setHasData(false); return; }
-      const parsed: BloodTestResults = JSON.parse(raw);
-      if (!parsed.supplements || parsed.supplements.length === 0) { setHasData(false); return; }
-      setData(parsed);
-      setHasData(true);
-    } catch {
-      setHasData(false);
+      const parsed = JSON.parse(healthRaw);
+      if (!parsed || (!parsed.ldlCholesterol && !parsed.bmi && !parsed.hemoglobin)) {
+        setHasHealthData(false); return;
+      }
+    } catch { setHasHealthData(false); return; }
+    setHasHealthData(true);
+
+    // Restore preferences
+    const prefsRaw = localStorage.getItem(PREFS_KEY);
+    if (prefsRaw) {
+      try {
+        const savedPrefs: Preferences = JSON.parse(prefsRaw);
+        setPrefs(savedPrefs);
+        setTempMeds(savedPrefs.medications);
+        setTempLife(savedPrefs.lifestyle);
+        setTempSymp(savedPrefs.symptoms);
+      } catch {}
+    }
+
+    // Check cache
+    const cacheRaw = sessionStorage.getItem(CACHE_KEY);
+    if (cacheRaw) {
+      try { setData(JSON.parse(cacheRaw)); } catch {}
     }
   }, []);
 
-  /* ── データなし ── */
-  if (hasData === false) {
+  // Fetch supplements
+  const fetchSupplements = useCallback(async (p: Preferences) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const healthData = JSON.parse(localStorage.getItem(HEALTH_DATA_KEY) || '{}');
+      const res = await fetch(`${API_BASE}/api/analyze-supplements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          healthData,
+          medications: p.medications,
+          lifestyle: p.lifestyle,
+          symptoms: p.symptoms,
+        }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        setData(json.data);
+        sessionStorage.setItem(CACHE_KEY, JSON.stringify(json.data));
+      } else {
+        throw new Error(json.error || '解析に失敗しました');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Auto-fetch when prefs exist but no cached data
+  useEffect(() => {
+    if (prefs && !data && !loading && hasHealthData) {
+      fetchSupplements(prefs);
+    }
+  }, [prefs, data, loading, hasHealthData, fetchSupplements]);
+
+  const handleSubmitPrefs = () => {
+    const newPrefs: Preferences = { medications: tempMeds, lifestyle: tempLife, symptoms: tempSymp };
+    localStorage.setItem(PREFS_KEY, JSON.stringify(newPrefs));
+    setPrefs(newPrefs);
+    setData(null);
+    sessionStorage.removeItem(CACHE_KEY);
+    fetchSupplements(newPrefs);
+  };
+
+  const handleReset = () => {
+    sessionStorage.removeItem(CACHE_KEY);
+    localStorage.removeItem(PREFS_KEY);
+    setData(null);
+    setPrefs(null);
+    setTempMeds([]);
+    setTempLife([]);
+    setTempSymp([]);
+  };
+
+  /* ── No health data ── */
+  if (hasHealthData === false) {
     return (
-      <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch", height: "100%" }}>
+      <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
         <div className="mb-6">
           <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">SUPPLEMENT OPTIMIZATION</p>
           <h1 className="text-2xl font-bold text-white mb-2">サプリメント最適化</h1>
         </div>
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-[#111118] rounded-2xl p-10 flex flex-col items-center text-center border border-white/8"
-        >
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+          className="bg-[#111118] rounded-2xl p-10 flex flex-col items-center text-center border border-white/8">
           <div className="text-5xl mb-4">💊</div>
-          <h2 className="text-xl font-bold text-white mb-2">血液検査データが未登録です</h2>
+          <h2 className="text-xl font-bold text-white mb-2">健康診断データが未登録です</h2>
           <p className="text-sm text-gray-400 mb-6 max-w-sm leading-relaxed">
-            まず血液検査結果をアップロードしてください。
-            AIが解析してあなた専用のサプリメント処方を生成します。
+            まず健康診断・血液検査の結果をアップロードしてください。データに基づいたサプリメント推奨を生成します。
           </p>
-          <button
-            onClick={() => navigate("/upload")}
-            className="flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-semibold text-black transition-colors"
-            style={{ background: "#4ade80" }}
-          >
-            血液検査をアップロード
-            <ArrowRight size={16} />
+          <button onClick={() => navigate('/analysis')} className="flex items-center gap-2 px-8 py-3 rounded-xl text-sm font-semibold text-black transition-colors" style={{ background: '#4ade80' }}>
+            健康診断をアップロード <ArrowRight size={16} />
           </button>
         </motion.div>
       </div>
     );
   }
 
-  /* ── 初期状態（null） ── */
+  /* ── Loading ── */
+  if (hasHealthData === null) return null;
+
+  /* ── Preference selection (no prefs yet OR no data) ── */
+  if (!prefs && !data) {
+    return (
+      <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
+        <div className="mb-6">
+          <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">SUPPLEMENT OPTIMIZATION</p>
+          <h1 className="text-2xl font-bold text-white mb-2">サプリメント最適化</h1>
+          <p className="text-sm text-gray-400">薬剤・ライフスタイル・症状を選択してください。</p>
+        </div>
+
+        <div style={{ background: '#111118', border: '1px solid #222', borderRadius: 16, padding: 18, marginBottom: 14 }}>
+          <p style={{ fontSize: 12, color: '#888', marginBottom: 10, fontWeight: 600 }}>服用中の薬剤（複数選択可）</p>
+          <ChipSelector options={MEDICATION_OPTIONS} selected={tempMeds} onChange={setTempMeds} />
+        </div>
+
+        <div style={{ background: '#111118', border: '1px solid #222', borderRadius: 16, padding: 18, marginBottom: 14 }}>
+          <p style={{ fontSize: 12, color: '#888', marginBottom: 10, fontWeight: 600 }}>ライフスタイル・リスク（複数選択可）</p>
+          <ChipSelector options={LIFESTYLE_OPTIONS} selected={tempLife} onChange={setTempLife} />
+        </div>
+
+        <div style={{ background: '#111118', border: '1px solid #222', borderRadius: 16, padding: 18, marginBottom: 18 }}>
+          <p style={{ fontSize: 12, color: '#888', marginBottom: 10, fontWeight: 600 }}>主観的症状（複数選択可）</p>
+          <ChipSelector options={SYMPTOM_OPTIONS} selected={tempSymp} onChange={setTempSymp} />
+        </div>
+
+        <button onClick={handleSubmitPrefs} style={{
+          width: '100%', padding: '14px', borderRadius: 14, background: '#4ade80', color: '#000',
+          fontWeight: 700, fontSize: 15, border: 'none', cursor: 'pointer',
+        }}>
+          推奨を確認する
+        </button>
+
+        <p style={{ fontSize: 11, color: '#444', textAlign: 'center', marginTop: 12 }}>
+          ※ 選択しない項目はスキップ可能です
+        </p>
+      </div>
+    );
+  }
+
+  /* ── Loading state ── */
+  if (loading) {
+    return (
+      <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto flex flex-col items-center justify-center" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
+        <div style={{ position: 'relative', width: 64, height: 64, marginBottom: 24 }}>
+          <div style={{ position: 'absolute', inset: 0, border: '4px solid rgba(74,222,128,0.15)', borderRadius: '50%' }} />
+          <motion.div animate={{ rotate: 360 }} transition={{ duration: 1.1, repeat: Infinity, ease: 'linear' }}
+            style={{ position: 'absolute', inset: 0, border: '4px solid transparent', borderTopColor: '#4ade80', borderRadius: '50%' }} />
+        </div>
+        <p className="text-sm text-gray-400">推奨を計算中...</p>
+      </div>
+    );
+  }
+
+  /* ── Error ── */
+  if (error) {
+    return (
+      <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto flex flex-col items-center justify-center" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
+        <AlertTriangle className="w-12 h-12 text-red-400 mb-4" />
+        <p className="text-white font-bold mb-2">エラーが発生しました</p>
+        <p className="text-sm text-gray-400 mb-6">{error}</p>
+        <button onClick={() => prefs && fetchSupplements(prefs)} style={{
+          padding: '12px 24px', borderRadius: 12, background: '#4ade80', color: '#000', fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer',
+        }}>再試行</button>
+      </div>
+    );
+  }
+
+  /* ── Results ── */
   if (!data) return null;
 
-  const supplements  = data.supplements;
-  const highCount    = supplements.filter(s => s.priority === "high").length;
+  const highCount = data.recommendations.filter(r => r.priority === 'high').length;
 
-  /* ── メイン表示 ── */
   return (
-    <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: "touch", height: "100%" }}>
-
+    <div className="p-5 pt-16 lg:pt-8 lg:p-8 pb-24 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch', height: '100%' }}>
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div>
           <p className="text-xs text-gray-500 uppercase tracking-widest mb-1">SUPPLEMENT OPTIMIZATION</p>
           <h1 className="text-2xl font-bold text-white mb-2">サプリメント最適化</h1>
-          <p className="text-sm text-gray-400">血液検査結果に基づいたサプリメント処方です。</p>
+          <p className="text-sm text-gray-400">血液検査結果に基づいた論文ベースの推奨です。</p>
         </div>
-        <button
-          onClick={() => navigate("/upload")}
-          className="shrink-0 mt-1 text-xs font-semibold px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:border-green-500/40 hover:text-green-400 transition-colors whitespace-nowrap"
-        >
-          再アップロード
+        <button onClick={handleReset}
+          className="shrink-0 mt-1 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:border-green-500/40 hover:text-green-400 transition-colors whitespace-nowrap">
+          <RefreshCw size={12} />再解析
         </button>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-3 mb-6">
         {[
-          { label: "処方数",   value: `${supplements.length} 種類`, valueClass: "text-white" },
-          { label: "優先サプリ", value: `${highCount} 種類`,         valueClass: "text-orange-400" },
-        ].map((item) => (
-          <div key={item.label} className="bg-[#111118] rounded-xl p-3 border border-white/8">
+          { label: '推奨サプリ', value: `${data.recommendations.length}`, color: 'text-white' },
+          { label: '高優先度', value: `${highCount}`, color: 'text-red-400' },
+          { label: '薬剤アラート', value: `${data.drugAlerts.length}`, color: data.drugAlerts.length > 0 ? 'text-orange-400' : 'text-gray-500' },
+        ].map(item => (
+          <div key={item.label} className="bg-[#111118] rounded-xl p-3 border border-white/8 text-center">
             <p className="text-xs text-gray-500 mb-1">{item.label}</p>
-            <p className={`text-lg font-bold ${item.valueClass}`}>{item.value}</p>
+            <p className={`text-xl font-bold ${item.color}`}>{item.value}</p>
           </div>
         ))}
       </div>
 
-      {/* Supplement cards */}
-      <div className="space-y-4 mb-6">
-        {supplements.map((s, i) => {
-          const pc = PRIORITY_CONFIG[s.priority] ?? PRIORITY_CONFIG.normal;
-          const amazonUrl = `https://www.amazon.co.jp/s?k=${encodeURIComponent(s.name)}`;
+      {/* Drug alerts */}
+      {data.drugAlerts.length > 0 && (
+        <div className="mb-6 space-y-2">
+          {data.drugAlerts.map((alert, i) => (
+            <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+              style={{ background: '#f9731612', border: '1px solid #f9731630', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <AlertTriangle style={{ width: 16, height: 16, color: '#f97316', flexShrink: 0, marginTop: 2 }} />
+              <p style={{ fontSize: 12, color: '#f97316', lineHeight: 1.6 }}>{alert}</p>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      {/* Recommendations */}
+      <div className="space-y-3 mb-6">
+        {data.recommendations.map((rec, i) => {
+          const pc = PRIORITY_CONFIG[rec.priority];
+          const gc = GRADE_CONFIG[rec.grade];
           return (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.06 * i }}
-              className="bg-[#111118] rounded-xl p-4 border border-white/8"
-              style={{ borderColor: s.priority === "high" ? "rgba(249,115,22,0.25)" : undefined }}
-            >
-              {/* Name + priority */}
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-base font-bold text-white">{s.name}</span>
-                <span
-                  className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                  style={{ color: pc.color, background: pc.bg, border: `1px solid ${pc.border}` }}
-                >
+            <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 + i * 0.04 }}
+              style={{ background: '#111118', borderRadius: 14, padding: 16, borderLeft: `4px solid ${pc.color}`, border: `1px solid #222`, borderLeftColor: pc.color, borderLeftWidth: 4 }}>
+              {/* Header: name + badges */}
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>{rec.name}</span>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: pc.color, background: pc.bg, border: `1px solid ${pc.border}` }}>
                   {pc.label}
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999, color: gc.color, background: gc.bg }}>
+                  Grade {rec.grade}
                 </span>
               </div>
 
-              {/* Reason */}
-              <p className="text-sm text-gray-300 mb-3 leading-relaxed">{s.reason}</p>
-
-              {/* Dosage / Timing / Price */}
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                {[
-                  { label: "用量",     value: s.dosage },
-                  { label: "タイミング", value: s.timing },
-                  { label: "月額目安",  value: s.monthly_cost },
-                ].map(({ label, value }) => (
-                  <div key={label} className="bg-[#0e0e15] rounded-lg p-2.5">
-                    <p className="text-[10px] text-gray-500 mb-1">{label}</p>
-                    <p className="text-xs font-semibold text-gray-200">{value}</p>
-                  </div>
-                ))}
+              {/* Dose */}
+              <div style={{ background: '#0e0e15', borderRadius: 8, padding: '8px 12px', marginBottom: 8 }}>
+                <p style={{ fontSize: 10, color: '#555', marginBottom: 2 }}>投与量</p>
+                <p style={{ fontSize: 12, color: '#ccc', fontWeight: 600 }}>{rec.dose}</p>
               </div>
 
-              {/* Amazon button */}
-              <a
-                href={amazonUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg text-white text-sm font-medium transition-colors"
-                style={{ background: "#f97316" }}
-              >
-                <ExternalLink size={14} />
-                Amazonで探す
-              </a>
+              {/* Reason */}
+              <p style={{ fontSize: 12, color: '#999', lineHeight: 1.7, marginBottom: 8 }}>{rec.reason}</p>
+
+              {/* Tags */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                {rec.trigger && (
+                  <span style={{ fontSize: 10, color: '#60a5fa', background: '#60a5fa15', padding: '3px 8px', borderRadius: 6 }}>
+                    検出値: {rec.trigger}
+                  </span>
+                )}
+                {rec.retestTiming && (
+                  <span style={{ fontSize: 10, color: '#a78bfa', background: '#a78bfa15', padding: '3px 8px', borderRadius: 6 }}>
+                    再検査: {rec.retestTiming}
+                  </span>
+                )}
+              </div>
+
+              {/* Warning */}
+              {rec.warning && (
+                <div style={{ background: '#f9731610', border: '1px solid #f9731625', borderRadius: 8, padding: '8px 10px' }}>
+                  <p style={{ fontSize: 11, color: '#f97316', lineHeight: 1.5 }}>⚠️ {rec.warning}</p>
+                </div>
+              )}
             </motion.div>
           );
         })}
       </div>
 
+      {/* Not needed */}
+      {data.notNeeded.length > 0 && (
+        <div className="mb-6">
+          <p style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, fontWeight: 600 }}>補充不要</p>
+          <div className="space-y-2">
+            {data.notNeeded.map((item, i) => (
+              <motion.div key={i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 + i * 0.03 }}
+                style={{ background: '#111118', borderRadius: 12, padding: '10px 14px', borderLeft: '4px solid #4ade80', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <CheckCircle2 style={{ width: 14, height: 14, color: '#4ade80', flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#4ade80' }}>{item.name}</span>
+                  <p style={{ fontSize: 11, color: '#777', marginTop: 2 }}>{item.reason}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Disclaimer */}
-      <p className="text-xs text-gray-500 text-center leading-relaxed">
-        ※ 本アプリは医療機器ではありません。サプリメントの提案は生活習慣改善の参考情報であり、医学的診断・治療を提供するものではありません。※ 個人の状態により効果は異なります。医療機関への相談もご検討ください。
-      </p>
+      <div style={{ background: '#111118', border: '1px solid #222', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 8 }}>
+        <Info style={{ width: 14, height: 14, color: '#555', flexShrink: 0, marginTop: 2 }} />
+        <p style={{ fontSize: 11, color: '#555', lineHeight: 1.6 }}>
+          この推奨は学術論文に基づく情報提供です。医療行為ではありません。必ず医師・薬剤師にご相談ください。
+        </p>
+      </div>
     </div>
   );
 }

@@ -24,4 +24,18 @@ export interface HealthCheckData {
   abnormalFlags: string[];
   doctorComment: string | null;
   overallRating: string | null;
+  // Extended biomarkers
+  vitaminB12: number | null;
+  folate: number | null;
+  homocysteine: number | null;
+  zinc: number | null;
+  omega3Index: number | null;
+  tsh: number | null;
+  ft3: number | null;
+  ft4: number | null;
+  tpoAntibody: number | null;
+  cortisol: number | null;
+  testosterone: number | null;
+  homaIr: number | null;
+  hsCrp: number | null;
 }
