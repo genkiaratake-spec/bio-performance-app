@@ -42,8 +42,55 @@ interface Preferences {
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
 const HEALTH_DATA_KEY = 'healthCheckData';
+const BLOOD_TEST_KEY = 'bloodTestResults';
 const PREFS_KEY = 'supplementPreferences';
 const CACHE_KEY = 'supplementsData';
+
+// Extract numeric health data from bloodTestResults markers format as fallback
+function extractHealthDataFromBloodTest(): Record<string, any> | null {
+  try {
+    const raw = localStorage.getItem(BLOOD_TEST_KEY);
+    if (!raw) return null;
+    const bt = JSON.parse(raw);
+    if (!bt.markers || bt.markers.length === 0) return null;
+
+    const result: Record<string, any> = {};
+    const markers: Array<{ name: string; value: string; unit: string; status: string }> = bt.markers;
+
+    const mapping: Record<string, string[]> = {
+      ldlCholesterol: ['LDL', 'LDLコレステロール'],
+      hdlCholesterol: ['HDL', 'HDLコレステロール'],
+      triglycerides: ['中性脂肪', 'TG', 'トリグリセリド'],
+      bloodSugar: ['血糖', '空腹時血糖', 'FBS'],
+      hba1c: ['HbA1c', 'ヘモグロビンA1c'],
+      ferritin: ['フェリチン'],
+      vitaminD: ['ビタミンD', '25(OH)D', 'Vitamin D'],
+      crp: ['CRP'],
+      hsCrp: ['hs-CRP', '高感度CRP'],
+      hemoglobin: ['ヘモグロビン', 'Hb'],
+      bmi: ['BMI'],
+      vitaminB12: ['ビタミンB12', 'B12'],
+      folate: ['葉酸'],
+      homocysteine: ['ホモシステイン'],
+      zinc: ['亜鉛', 'Zn'],
+      tsh: ['TSH'],
+      cortisol: ['コルチゾール'],
+      testosterone: ['テストステロン'],
+    };
+
+    for (const [key, aliases] of Object.entries(mapping)) {
+      for (const alias of aliases) {
+        const marker = markers.find(m => m.name.includes(alias));
+        if (marker) {
+          const num = parseFloat(marker.value);
+          if (!isNaN(num)) { result[key] = num; break; }
+        }
+      }
+    }
+
+    return Object.keys(result).length > 0 ? result : null;
+  } catch { return null; }
+}
 
 const API_BASE = typeof window !== 'undefined' && window.location.protocol === 'capacitor:'
   ? 'https://bio-performance-app.vercel.app' : '';
@@ -143,16 +190,28 @@ export default function Supplements() {
   const [tempLife, setTempLife] = useState<string[]>([]);
   const [tempSymp, setTempSymp] = useState<string[]>([]);
 
-  // Initialize
+  // Initialize - check healthCheckData first, then fallback to bloodTestResults
   useEffect(() => {
+    let hasData = false;
     const healthRaw = localStorage.getItem(HEALTH_DATA_KEY);
-    if (!healthRaw) { setHasHealthData(false); return; }
-    try {
-      const parsed = JSON.parse(healthRaw);
-      if (!parsed || (!parsed.ldlCholesterol && !parsed.bmi && !parsed.hemoglobin)) {
-        setHasHealthData(false); return;
+    if (healthRaw) {
+      try {
+        const parsed = JSON.parse(healthRaw);
+        if (parsed && (parsed.ldlCholesterol || parsed.bmi || parsed.hemoglobin)) {
+          hasData = true;
+        }
+      } catch {}
+    }
+    if (!hasData) {
+      // Fallback: try to extract from bloodTestResults
+      const extracted = extractHealthDataFromBloodTest();
+      if (extracted) {
+        hasData = true;
+        // Save as healthCheckData for future use
+        localStorage.setItem(HEALTH_DATA_KEY, JSON.stringify(extracted));
       }
-    } catch { setHasHealthData(false); return; }
+    }
+    if (!hasData) { setHasHealthData(false); return; }
     setHasHealthData(true);
 
     // Restore preferences
@@ -179,7 +238,11 @@ export default function Supplements() {
     setLoading(true);
     setError(null);
     try {
-      const healthData = JSON.parse(localStorage.getItem(HEALTH_DATA_KEY) || '{}');
+      let healthData = JSON.parse(localStorage.getItem(HEALTH_DATA_KEY) || '{}');
+      // Fallback if healthCheckData is empty
+      if (!healthData || (!healthData.ldlCholesterol && !healthData.bmi)) {
+        healthData = extractHealthDataFromBloodTest() || {};
+      }
       const res = await fetch(`${API_BASE}/api/analyze-supplements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
