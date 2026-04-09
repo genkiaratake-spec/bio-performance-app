@@ -823,12 +823,12 @@ export default function Analysis() {
             marginTop: 12,
             cursor: 'pointer',
           }}
-          onClick={() => navigate('/upload')}
+          onClick={() => { navigate('/upload'); window.scrollTo(0, 0); }}
         >
           <Upload size={18} color="#a78bfa" />
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>Have other tests?</div>
-            <div style={{ fontSize: 11, color: '#666' }}>他の検査結果をアップロード</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>検査結果をアップロード</div>
+            <div style={{ fontSize: 11, color: '#666' }}>新しい検査結果を追加</div>
           </div>
           <span
             style={{
