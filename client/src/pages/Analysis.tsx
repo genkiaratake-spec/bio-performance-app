@@ -254,9 +254,11 @@ export default function Analysis() {
       });
       clearTimeout(timeoutId);
       const text = await response.text();
+      console.log('API response status:', response.status, 'length:', text.length);
       let result;
       try { result = JSON.parse(text); } catch {
-        throw new Error('解析結果の読み取りに失敗しました');
+        console.error('JSON parse failed, raw:', text.substring(0, 500));
+        throw new Error(`解析結果の読み取りに失敗しました（HTTP ${response.status}）`);
       }
       if (result.success && result.data) {
         try {
