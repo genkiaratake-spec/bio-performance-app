@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, ChevronRight } from 'lucide-react';
-import { evaluateBiomarkers, getCategoryScore, getBarPosition, getBiomarkerRange, getBiomarkerStatus, BIOMARKER_DEFS } from '../lib/biomarkerEvaluation';
+import { evaluateBiomarkers, getCategoryScore, getBarPosition, getBiomarkerRange, getBiomarkerStatus, BIOMARKER_DEFS, BIO_75_UNIQUE_COUNT } from '../lib/biomarkerEvaluation';
 import { getHealthHistory, compareLatestTwo } from '../lib/healthHistory';
 import type { BiomarkerEntry, ExtractedBiomarker } from '../types/healthCheck';
 import BiomarkerDetail from '../components/BiomarkerDetail';
@@ -456,7 +456,7 @@ export default function Analysis() {
   const r = (size - sw) / 2;
   const circ = 2 * Math.PI * r;
   const measured = score.measured;
-  const total = score.total;
+  const total = BIO_75_UNIQUE_COUNT;
   const unmeasured = total - measured;
 
   const optCount = score.optimal;

@@ -109,7 +109,7 @@ export default function ClinicTest() {
         <h1 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>BiO 検査プラン</h1>
         <p style={{ fontSize: 13, color: '#aaa', marginBottom: 4 }}>提携クリニック採血</p>
         <p style={{ fontSize: 12, color: '#888', lineHeight: 1.6, marginTop: 8 }}>
-          提携クリニックで採血→65バイオマーカーを測定→AIがサプリ・食事を最適化します
+          提携クリニックで採血→75項目を測定→AIがサプリ・食事を最適化します
         </p>
       </div>
 
@@ -180,7 +180,7 @@ export default function ClinicTest() {
 
       <div style={{ marginTop: 28 }}>
         {[
-          '65バイオマーカーを測定（標準健診の4倍以上）',
+          '75項目を測定（標準健診の4倍以上）',
           'VitD・フェリチン・hs-CRP・O3Iなど健診外の重要項目を網羅',
           '結果に基づいてサプリ・食事推奨を自動更新',
           '前回との比較で改善トレンドを可視化',
@@ -552,7 +552,7 @@ export default function ClinicTest() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
               <span style={{ color: '#888' }}>検査内容</span>
-              <span>65バイオマーカー</span>
+              <span>75項目</span>
             </div>
             {selectedPlan && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
@@ -609,7 +609,7 @@ export default function ClinicTest() {
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
               <span style={{ color: '#888' }}>検査内容</span>
-              <span>65バイオマーカー</span>
+              <span>75項目</span>
             </div>
             {selectedPlan && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>

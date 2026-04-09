@@ -161,7 +161,91 @@ export function getCategoryScore(entries: BiomarkerEntry[]): {
 export { DEFS as BIOMARKER_DEFS };
 
 /* ------------------------------------------------------------------ */
-/*  Range bar data (for WHOOP-style range visualization)               */
+/*  BiO basic panel 75 biomarker keys                                  */
+/* ------------------------------------------------------------------ */
+export const BIO_75_BIOMARKER_KEYS = new Set([
+  'totalProtein',
+  'bun', 'bloodUreaNitrogen', 'ureaNitrogen',
+  'creatinine',
+  'uricAcid',
+  'hdl', 'hdlCholesterol',
+  'ldl', 'ldlCholesterol',
+  'triglycerides', 'tg',
+  'freeFattyAcid', 'nefa',
+  'ldh', 'lactateDehydrogenase',
+  'ast', 'got',
+  'alt', 'gpt',
+  'alp', 'alkalinePhosphatase',
+  'che', 'cholinesterase',
+  'ggt', 'gammaGtp',
+  'ck', 'cpk', 'creatineKinase',
+  'amylase',
+  'totalBilirubin',
+  'directBilirubin',
+  'indirectBilirubin',
+  'glucose', 'bloodSugar', 'fbg',
+  'hba1c',
+  'insulin',
+  'sodium',
+  'potassium',
+  'chloride', 'chlor',
+  'calcium',
+  'phosphorus', 'phosphate',
+  'iron', 'serumIron',
+  'uibc', 'unsaturatedIronBindingCapacity',
+  'ferritin',
+  'magnesium',
+  'copper',
+  'zinc',
+  'crp', 'hsCrp',
+  'homocysteine',
+  'tsh',
+  'ft3',
+  'ft4',
+  'wbc', 'whiteBloodCells',
+  'rbc', 'redBloodCells',
+  'reticulocytes',
+  'hemoglobin', 'hgb',
+  'hematocrit', 'ht',
+  'mcv',
+  'mch',
+  'mchc',
+  'platelets', 'plt',
+  'neutrophilPct', 'neutrophils',
+  'lymphocytePct', 'lymphocytes',
+  'monocytePct', 'monocytes',
+  'eosinophilPct', 'eosinophils',
+  'basophilPct', 'basophils',
+  'albumin',
+  'alpha1Globulin',
+  'alpha2Globulin',
+  'betaGlobulin',
+  'gammaGlobulin',
+  'vitaminD', 'twentyFiveOHD',
+  'ceruloplasmin',
+  'hPyloriAntibody',
+  'pepsinogen1',
+  'pepsinogen2',
+  'pepsinogenRatio',
+  'dhea', 'dheas',
+]);
+
+export const BIO_75_UNIQUE_COUNT = 75;
+
+export const NON_BLOOD_TEST_KEYS = new Set([
+  'height', 'weight', 'bmi', 'bodyFatPct', 'waistCircumference',
+  'standardWeight', 'obesityDegree', 'visceralFatCt',
+  'systolicBp', 'diastolicBp', 'bloodPressure',
+  'vision', 'eyePressure', 'hearing',
+  'fvc', 'fev1', 'fev1Ratio', 'vitalCapacity',
+  'ecg', 'abi', 'pwv',
+  'urineProtein', 'urineGlucose', 'urobilinogen',
+  'urineBilirubin', 'urinePH', 'urineSpecificGravity',
+  'urineKetone', 'urineRbc', 'urineWbc', 'urineEpithelial',
+]);
+
+/* ------------------------------------------------------------------ */
+/*  Range bar data                                                     */
 /* ------------------------------------------------------------------ */
 export interface BiomarkerRange {
   min: number;
