@@ -766,12 +766,14 @@ export default function Analysis() {
           >
             CONTRIBUTING TESTS
           </span>
-          <span
+          <button
             onClick={() => navigate('/history')}
-            style={{ fontSize: 11, fontWeight: 600, color: '#a78bfa', cursor: 'pointer' }}
+            style={{ fontSize: 11, fontWeight: 600, color: '#a78bfa', cursor: 'pointer', background: 'none', border: 'none', padding: 0, transition: 'opacity 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.opacity = '0.7'; }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
           >
             HISTORY <ArrowRight size={11} style={{ verticalAlign: 'middle', marginLeft: 2 }} />
-          </span>
+          </button>
         </div>
 
         {history.map(h => {
@@ -785,6 +787,8 @@ export default function Analysis() {
           return (
             <div
               key={h.id}
+              role="button"
+              tabIndex={0}
               onClick={() => navigate('/history')}
               style={{
                 display: 'flex',
@@ -796,7 +800,10 @@ export default function Analysis() {
                 padding: '12px 14px',
                 marginBottom: 6,
                 cursor: 'pointer',
+                transition: 'border-color 0.15s',
               }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e1e28'; }}
             >
               <FileText size={18} color="#555" />
               <div style={{ flex: 1 }}>
@@ -812,6 +819,8 @@ export default function Analysis() {
 
         {/* Upload banner */}
         <div
+          role="button"
+          tabIndex={0}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -822,15 +831,19 @@ export default function Analysis() {
             padding: '14px 14px',
             marginTop: 12,
             cursor: 'pointer',
+            transition: 'border-color 0.15s, opacity 0.15s',
           }}
           onClick={() => { navigate('/upload'); window.scrollTo(0, 0); }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = '#a78bfa40'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e1e28'; }}
         >
           <Upload size={18} color="#a78bfa" />
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 13, fontWeight: 600 }}>検査結果をアップロード</div>
             <div style={{ fontSize: 11, color: '#666' }}>新しい検査結果を追加</div>
           </div>
-          <span
+          <button
+            onClick={(e) => { e.stopPropagation(); navigate('/upload'); window.scrollTo(0, 0); }}
             style={{
               fontSize: 10,
               fontWeight: 700,
@@ -839,10 +852,15 @@ export default function Analysis() {
               padding: '4px 10px',
               borderRadius: 8,
               letterSpacing: 1,
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'opacity 0.15s',
             }}
+            onMouseEnter={e => { e.currentTarget.style.opacity = '0.7'; }}
+            onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
           >
             UPLOAD
-          </span>
+          </button>
         </div>
       </div>
 
