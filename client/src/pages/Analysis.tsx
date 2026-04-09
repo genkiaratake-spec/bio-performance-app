@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, ChevronRight } from 'lucide-react';
@@ -228,6 +228,60 @@ export default function Analysis() {
   const [sortMode, setSortMode] = useState<SortMode>('oor-first');
   const [showSortDropdown, setShowSortDropdown] = useState(false);
   const [selectedBiomarker, setSelectedBiomarker] = useState<BiomarkerEntry | null>(null);
+  const [showUpload, setShowUpload] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* ---- Upload handler ---- */
+  const handleUploadFile = useCallback(async (file: File) => {
+    const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+    if (!allowed.includes(file.type)) {
+      setUploadError('PDF・PNG・JPGのみ対応しています');
+      return;
+    }
+    setIsAnalyzing(true);
+    setUploadError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 55000);
+      const response = await fetch(`${API_BASE}/api/analyze-health-check`, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      const text = await response.text();
+      let result;
+      try { result = JSON.parse(text); } catch {
+        throw new Error('解析結果の読み取りに失敗しました');
+      }
+      if (result.success && result.data) {
+        try {
+          const { saveHealthCheck } = await import('../lib/healthHistory');
+          saveHealthCheck(result.data);
+        } catch {
+          localStorage.setItem('healthCheckData', JSON.stringify(result.data));
+        }
+        sessionStorage.removeItem('labsInsight');
+        sessionStorage.removeItem('supplementsData');
+        setShowUpload(false);
+        window.location.reload();
+      } else {
+        throw new Error(result.error || '解析に失敗しました');
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        setUploadError('タイムアウトしました。再度お試しください');
+      } else {
+        setUploadError(err instanceof Error ? err.message : '通信エラーが発生しました');
+      }
+    } finally {
+      setIsAnalyzing(false);
+    }
+  }, []);
 
   /* ---- Load data ---- */
   useEffect(() => {
@@ -371,7 +425,7 @@ export default function Analysis() {
             健康診断・血液検査の結果をアップロードすると、バイオマーカーの詳細分析が表示されます。
           </div>
           <button
-            onClick={() => navigate('/upload')}
+            onClick={() => setShowUpload(true)}
             style={{
               background: '#a78bfa',
               color: '#fff',
@@ -386,6 +440,10 @@ export default function Analysis() {
             データをアップロード
           </button>
         </div>
+        {/* Upload modal for no-data state */}
+        {renderUploadModal()}
+        <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg" style={{ display: 'none' }}
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); e.target.value = ''; }} />
       </div>
     );
   }
@@ -430,7 +488,7 @@ export default function Analysis() {
           )}
         </div>
         <button
-          onClick={() => navigate('/upload')}
+          onClick={() => setShowUpload(true)}
           style={{
             fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.7)',
             background: 'none', border: '1px solid rgba(255,255,255,0.2)',
@@ -777,6 +835,93 @@ export default function Analysis() {
           />
         )}
       </AnimatePresence>
+
+      {/* ---- Upload modal ---- */}
+      {renderUploadModal()}
+
+      {/* Hidden file input */}
+      <input ref={fileInputRef} type="file" accept=".pdf,.png,.jpg,.jpeg" style={{ display: 'none' }}
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); e.target.value = ''; }} />
     </div>
   );
+
+  function renderUploadModal() {
+    if (!showUpload) return null;
+    return (
+      <div
+        style={{
+          position: 'fixed', inset: 0, zIndex: 50,
+          background: 'rgba(0,0,0,0.85)',
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          padding: 24,
+        }}
+        onClick={(e) => { if (e.target === e.currentTarget && !isAnalyzing) { setShowUpload(false); setUploadError(null); } }}
+      >
+        <div style={{
+          background: '#1a1a24', borderRadius: 16,
+          padding: 24, width: '100%', maxWidth: 400,
+          border: '0.5px solid rgba(255,255,255,0.15)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+            <span style={{ fontWeight: 500, color: '#fff', fontSize: 15 }}>検査結果を更新</span>
+            {!isAnalyzing && (
+              <button
+                onClick={() => { setShowUpload(false); setUploadError(null); }}
+                style={{ background: 'none', border: 'none', color: '#888', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {isAnalyzing ? (
+            <div style={{ textAlign: 'center', padding: '24px 0', color: '#8a8a8e', fontSize: 13 }}>
+              <div style={{
+                width: 32, height: 32, border: '3px solid #1DB97D',
+                borderTopColor: 'transparent', borderRadius: '50%',
+                animation: 'spin 0.8s linear infinite', margin: '0 auto 12px',
+              }} />
+              AIが検査結果を解析中...（30秒ほどかかります）
+            </div>
+          ) : (
+            <>
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  border: '1.5px dashed rgba(255,255,255,0.25)',
+                  borderRadius: 12, padding: '32px 16px',
+                  textAlign: 'center', cursor: 'pointer',
+                  marginBottom: 12, transition: 'border-color 0.15s',
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) handleUploadFile(file); }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.25)'; }}
+              >
+                <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
+                <div style={{ color: '#fff', fontSize: 13, fontWeight: 500, marginBottom: 4 }}>タップしてファイルを選択</div>
+                <div style={{ color: '#8a8a8e', fontSize: 11 }}>PDF・PNG・JPG に対応 / ドラッグ＆ドロップ可</div>
+              </div>
+
+              {uploadError && (
+                <div style={{
+                  background: 'rgba(226,75,74,0.15)', border: '0.5px solid #E24B4A',
+                  borderRadius: 8, padding: '10px 12px',
+                  color: '#E24B4A', fontSize: 12, marginBottom: 12,
+                }}>
+                  {uploadError}
+                </div>
+              )}
+
+              <div style={{ color: '#555', fontSize: 10, textAlign: 'center', lineHeight: 1.5 }}>
+                健康診断・血液検査・人間ドック結果に対応
+              </div>
+            </>
+          )}
+        </div>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 }
