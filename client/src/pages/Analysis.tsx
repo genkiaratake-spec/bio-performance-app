@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, SlidersHorizontal, ChevronRight, FileText, Upload, ArrowRight } from 'lucide-react';
+import { Search, SlidersHorizontal, ChevronRight } from 'lucide-react';
 import { evaluateBiomarkers, getCategoryScore, getBarPosition, getBiomarkerRange, getBiomarkerStatus, BIOMARKER_DEFS } from '../lib/biomarkerEvaluation';
 import { getHealthHistory, compareLatestTwo } from '../lib/healthHistory';
 import type { BiomarkerEntry, ExtractedBiomarker } from '../types/healthCheck';
@@ -420,13 +420,28 @@ export default function Analysis() {
     <div style={{ height: '100vh', overflowY: 'auto', background: '#0a0a0f', color: '#fff', padding: '52px 20px 100px' }}>
 
       {/* ---- Section 1: Header ---- */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 18, fontWeight: 700 }}>Labs Summary</div>
-        {lastUpdatedDate && (
-          <div style={{ fontSize: 11, color: '#777', marginTop: 4 }}>
-            Last updated: {lastUpdatedDate}
-          </div>
-        )}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700 }}>Labs Summary</div>
+          {lastUpdatedDate && (
+            <div style={{ fontSize: 11, color: '#777', marginTop: 4 }}>
+              Last updated: {lastUpdatedDate}
+            </div>
+          )}
+        </div>
+        <button
+          onClick={() => navigate('/upload')}
+          style={{
+            fontSize: 11, fontWeight: 600, color: 'rgba(255,255,255,0.7)',
+            background: 'none', border: '1px solid rgba(255,255,255,0.2)',
+            borderRadius: 6, padding: '4px 12px', cursor: 'pointer',
+            transition: 'border-color 0.15s, color 0.15s', whiteSpace: 'nowrap',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.4)'; e.currentTarget.style.color = '#fff'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = 'rgba(255,255,255,0.7)'; }}
+        >
+          検査結果を更新
+        </button>
       </div>
 
       {/* ---- Section 2: Circular Gauge + Status Numbers ---- */}
@@ -750,118 +765,6 @@ export default function Analysis() {
             })}
           </div>
         ))}
-      </div>
-
-      {/* ---- Section 7: Contributing Tests ---- */}
-      <div style={{ marginTop: 32, marginBottom: 24 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              textTransform: 'uppercase' as const,
-              letterSpacing: 2,
-              color: '#777',
-            }}
-          >
-            CONTRIBUTING TESTS
-          </span>
-          <button
-            onClick={() => navigate('/history')}
-            style={{ fontSize: 11, fontWeight: 600, color: '#a78bfa', cursor: 'pointer', background: 'none', border: 'none', padding: 0, transition: 'opacity 0.15s' }}
-            onMouseEnter={e => { e.currentTarget.style.opacity = '0.7'; }}
-            onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
-          >
-            HISTORY <ArrowRight size={11} style={{ verticalAlign: 'middle', marginLeft: 2 }} />
-          </button>
-        </div>
-
-        {history.map(h => {
-          const d = new Date(h.uploadedAt);
-          const dateStr = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
-          const numKeys = Object.keys(h.data).filter(
-            k => !['checkupDate', 'gender', 'abnormalFlags', 'doctorComment', 'overallRating'].includes(k)
-              && (h.data as any)[k] !== null
-          ).length;
-
-          return (
-            <div
-              key={h.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => navigate('/history')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                background: '#111118',
-                border: '1px solid #1e1e28',
-                borderRadius: 12,
-                padding: '12px 14px',
-                marginBottom: 6,
-                cursor: 'pointer',
-                transition: 'border-color 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#333'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e1e28'; }}
-            >
-              <FileText size={18} color="#555" />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>
-                  Medical checkup ({numKeys}項目)
-                </div>
-                <div style={{ fontSize: 11, color: '#666' }}>{dateStr}</div>
-              </div>
-              <ChevronRight size={16} color="#555" />
-            </div>
-          );
-        })}
-
-        {/* Upload banner */}
-        <div
-          role="button"
-          tabIndex={0}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            background: '#111118',
-            border: '1px solid #1e1e28',
-            borderRadius: 12,
-            padding: '14px 14px',
-            marginTop: 12,
-            cursor: 'pointer',
-            transition: 'border-color 0.15s, opacity 0.15s',
-          }}
-          onClick={() => { navigate('/upload'); window.scrollTo(0, 0); }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = '#a78bfa40'; }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = '#1e1e28'; }}
-        >
-          <Upload size={18} color="#a78bfa" />
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>検査結果をアップロード</div>
-            <div style={{ fontSize: 11, color: '#666' }}>新しい検査結果を追加</div>
-          </div>
-          <button
-            onClick={(e) => { e.stopPropagation(); navigate('/upload'); window.scrollTo(0, 0); }}
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              color: '#a78bfa',
-              background: 'rgba(167,139,250,0.1)',
-              padding: '4px 10px',
-              borderRadius: 8,
-              letterSpacing: 1,
-              border: 'none',
-              cursor: 'pointer',
-              transition: 'opacity 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.opacity = '0.7'; }}
-            onMouseLeave={e => { e.currentTarget.style.opacity = '1'; }}
-          >
-            UPLOAD
-          </button>
-        </div>
       </div>
 
       {/* ---- BiomarkerDetail modal ---- */}
