@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, SlidersHorizontal, ChevronRight } from 'lucide-react';
-import { evaluateBiomarkers, getCategoryScore, getBarPosition, getBiomarkerRange, getBiomarkerStatus, BIOMARKER_DEFS, BIO_75_UNIQUE_COUNT } from '../lib/biomarkerEvaluation';
+import { evaluateBiomarkers, getCategoryScore, getBarPosition, getBiomarkerRange, getBiomarkerStatus, BIOMARKER_DEFS } from '../lib/biomarkerEvaluation';
 import { getHealthHistory, compareLatestTwo } from '../lib/healthHistory';
 import type { BiomarkerEntry, ExtractedBiomarker } from '../types/healthCheck';
 import BiomarkerDetail from '../components/BiomarkerDetail';
@@ -10,6 +10,52 @@ import BiomarkerDetail from '../components/BiomarkerDetail';
 const API_BASE = typeof window !== 'undefined' && window.location.protocol === 'capacitor:'
   ? 'https://bio-performance-app.vercel.app'
   : '';
+
+const PANEL_TOTAL = 75;
+
+const EXCLUDE_KEYS_SET = new Set([
+  'height', 'weight', 'bmi', 'bodyfatpct', 'waistcircumference',
+  'standardweight', 'obesitydegree', 'visceralfatct',
+  'systolicbp', 'diastolicbp', 'bloodpressure',
+  'vision', 'eyepressure', 'hearing',
+  'fvc', 'fev1', 'fev1ratio', 'vitalcapacity',
+  'ecg', 'abi', 'pwv',
+]);
+
+const EXCLUDE_LABELS_LIST = [
+  '身長', '体重', 'bmi', '肥満', '腹囲', '体脂肪', '内臓脂肪',
+  '血圧', '収縮', '拡張', '視力', '眼圧', '聴力',
+  '肺活量', '心電図', 'x線', '超音波', '骨密度',
+  '尿比重', '尿ph', '尿蛋白', '尿潜血', '尿糖', '尿沈渣', '便',
+];
+
+function isBloodTestItem(key: string, label: string): boolean {
+  const k = (key || '').toLowerCase().replace(/[_\-\s]/g, '');
+  const l = (label || '').toLowerCase();
+  if (EXCLUDE_KEYS_SET.has(k)) return false;
+  if (EXCLUDE_LABELS_LIST.some(ex => l.includes(ex))) return false;
+  return true;
+}
+
+const BLOOD_ONLY_FALLBACK = new Set([
+  'ldl', 'ldlCholesterol', 'hdl', 'hdlCholesterol',
+  'triglycerides', 'tg', 'totalCholesterol', 'nonHdlCholesterol',
+  'hba1c', 'glucose', 'bloodSugar', 'fbg', 'insulin', 'homaIr',
+  'crp', 'hsCrp', 'homocysteine',
+  'ast', 'alt', 'gammaGtp', 'alp', 'ldh', 'che', 'ck',
+  'creatinine', 'bun', 'egfr', 'uricAcid',
+  'hemoglobin', 'hgb', 'hematocrit', 'rbc', 'wbc', 'platelets',
+  'mcv', 'mch', 'mchc', 'rdw',
+  'neutrophilPct', 'lymphocytePct', 'eosinophilPct',
+  'ferritin', 'iron', 'tibc',
+  'vitaminD', 'vitaminB12', 'folate', 'zinc', 'magnesium',
+  'tsh', 'ft3', 'ft4', 'tpoAntibody',
+  'testosterone', 'freeTestosterone', 'cortisol', 'dheas',
+  'estradiol', 'fsh', 'lh',
+  'apoB', 'lipoproteinA', 'omega3Index',
+  'calcium', 'sodium', 'potassium', 'albumin', 'totalProtein',
+  'totalBilirubin', 'directBilirubin',
+]);
 
 const COLORS = {
   optimal: '#1DB97D',
@@ -299,35 +345,33 @@ export default function Analysis() {
     setLoading(false);
   }, []);
 
-  /* ---- Derived values ---- */
+  /* ---- Derived values: display biomarkers (blood test only) ---- */
   const entries = useMemo((): BiomarkerEntry[] => {
     if (!healthData) return [];
 
-    // Use allBiomarkers if available (open-ended extraction)
     const allBm: ExtractedBiomarker[] | undefined = (healthData as any).allBiomarkers;
     if (allBm && allBm.length > 0) {
-      return allBm.map(bm => {
-        // Use existing evaluation for known keys
-        const knownStatus = getBiomarkerStatus(bm.key, bm.value);
-        let status = knownStatus;
-        if (status === 'unavailable' && bm.value !== null) {
-          // Fallback: use isAbnormal flag from extraction
-          status = bm.isAbnormal === true ? 'out_of_range' : bm.isAbnormal === false ? 'optimal' : 'unavailable';
-        }
-        return {
-          key: bm.key,
-          label: bm.label,
-          value: bm.value,
-          unit: bm.unit,
-          status,
-          category: 'nutrients' as const, // default category for display
-          optimalRange: bm.referenceRange || undefined,
-        };
-      });
+      return allBm
+        .filter(bm => isBloodTestItem(bm.key, bm.label))
+        .map(bm => {
+          const knownStatus = getBiomarkerStatus(bm.key, bm.value);
+          let status = knownStatus;
+          if (status === 'unavailable' && bm.value !== null) {
+            status = bm.isAbnormal === true ? 'out_of_range' : bm.isAbnormal === false ? 'optimal' : 'unavailable';
+          }
+          return {
+            key: bm.key,
+            label: bm.label,
+            value: bm.value,
+            unit: bm.unit,
+            status,
+            category: 'nutrients' as const,
+            optimalRange: bm.referenceRange || undefined,
+          };
+        });
     }
 
-    // Fallback to predefined evaluation
-    return evaluateBiomarkers(healthData);
+    return evaluateBiomarkers(healthData).filter(e => BLOOD_ONLY_FALLBACK.has(e.key));
   }, [healthData]);
 
   const score = useMemo(() => getCategoryScore(entries), [entries]);
@@ -456,7 +500,7 @@ export default function Analysis() {
   const r = (size - sw) / 2;
   const circ = 2 * Math.PI * r;
   const measured = score.measured;
-  const total = BIO_75_UNIQUE_COUNT;
+  const total = PANEL_TOTAL;
   const unmeasured = total - measured;
 
   const optCount = score.optimal;
